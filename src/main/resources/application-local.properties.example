@@ -1,0 +1,5 @@
+spring.datasource.url=jdbc:postgresql://localhost:5432/bookstore
+spring.datasource.username=bookstore
+spring.datasource.password=bookstore
+app.jwt.secret=<your-base64-secret>
+app.jwt.expiration-ms=86400000
