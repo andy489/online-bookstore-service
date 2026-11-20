@@ -102,10 +102,10 @@ The most common dev workflow — PostgreSQL runs in Docker, the app runs locally
 git clone https://github.com/andy489/online-bookstore-service.git
 cd online-bookstore-service
 
-# Create local properties file with your credentials
-cp src/main/resources/application-local.properties.example \
-   src/main/resources/application-local.properties
-# Edit application-local.properties and fill in your JWT secret
+# Create local config file with your credentials
+cp src/main/resources/application-local.yml.example \
+   src/main/resources/application-local.yml
+# Edit application-local.yml and fill in your JWT secret
 
 docker compose up db        # start only the database
 ./gradlew bootRun --args='--spring.profiles.active=local'   # separate terminal

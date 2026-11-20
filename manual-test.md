@@ -244,6 +244,177 @@ Expected: `404`
 
 ---
 
+## Shopping Cart
+
+> Assumes book with id `2` (Foundation, stock 30) still exists. Replace `<TOKEN>` with a USER token.
+
+### Get cart (empty initially)
+```bash
+curl http://localhost:8080/api/cart \
+  -H "Authorization: Bearer <TOKEN>"
+```
+Expected: `200` with `{"id":1,"items":[],"total":0}`
+
+### Add item to cart
+```bash
+curl -X POST http://localhost:8080/api/cart/items \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"bookId":2,"quantity":2}'
+```
+Expected: `200` with cart containing Foundation ×2, subtotal 25.98
+
+### Add another book
+```bash
+curl -X POST http://localhost:8080/api/cart/items \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"bookId":3,"quantity":1}'
+```
+Expected: `200` with 2 items in cart
+
+### Add same book again (quantity increments)
+```bash
+curl -X POST http://localhost:8080/api/cart/items \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"bookId":2,"quantity":1}'
+```
+Expected: `200` — Foundation quantity is now 3
+
+### Update item quantity
+```bash
+curl -X PUT http://localhost:8080/api/cart/items/2 \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"quantity":5}'
+```
+Expected: `200` — Foundation quantity is now 5
+
+### Remove item
+```bash
+curl -X DELETE http://localhost:8080/api/cart/items/3 \
+  -H "Authorization: Bearer <TOKEN>"
+```
+Expected: `200` with only Foundation remaining
+
+### Add non-existent book (should fail)
+```bash
+curl -X POST http://localhost:8080/api/cart/items \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"bookId":9999,"quantity":1}'
+```
+Expected: `404`
+
+### Clear cart
+```bash
+curl -X DELETE http://localhost:8080/api/cart \
+  -H "Authorization: Bearer <TOKEN>"
+```
+Expected: `204`
+
+---
+
+## Orders
+
+> Re-add items to cart before testing order placement.
+
+### Re-add item after clear
+```bash
+curl -X POST http://localhost:8080/api/cart/items \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"bookId":2,"quantity":2}'
+```
+
+### Place order
+```bash
+curl -X POST http://localhost:8080/api/orders \
+  -H "Authorization: Bearer <TOKEN>"
+```
+Expected: `201` with order containing Foundation ×2, totalPrice 25.98, status `PENDING`
+
+### Cart should be empty after order
+```bash
+curl http://localhost:8080/api/cart \
+  -H "Authorization: Bearer <TOKEN>"
+```
+Expected: `200` with empty items
+
+### Get own order history
+```bash
+curl http://localhost:8080/api/orders/my \
+  -H "Authorization: Bearer <TOKEN>"
+```
+Expected: `200` with array containing the placed order
+
+### Get order by id (own order)
+```bash
+curl http://localhost:8080/api/orders/1 \
+  -H "Authorization: Bearer <TOKEN>"
+```
+Expected: `200`
+
+### Get order by id (another user's order — should 404)
+```bash
+curl http://localhost:8080/api/orders/1 \
+  -H "Authorization: Bearer <OTHER_USER_TOKEN>"
+```
+Expected: `404`
+
+### Place order with empty cart (should fail)
+```bash
+curl -X POST http://localhost:8080/api/orders \
+  -H "Authorization: Bearer <TOKEN>"
+```
+Expected: `400` with `"Cannot place order with an empty cart"`
+
+### Admin — list all orders
+```bash
+curl http://localhost:8080/api/orders \
+  -H "Authorization: Bearer <ADMIN_TOKEN>"
+```
+Expected: `200` with all orders across all users
+
+### Admin — update order status
+```bash
+curl -X PATCH http://localhost:8080/api/orders/1/status \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"SHIPPED"}'
+```
+Expected: `200` with status `SHIPPED`
+
+### Admin — update to CANCELLED
+```bash
+curl -X PATCH http://localhost:8080/api/orders/1/status \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"CANCELLED"}'
+```
+Expected: `200` with status `CANCELLED`
+
+### Admin — transition out of CANCELLED (should fail)
+```bash
+curl -X PATCH http://localhost:8080/api/orders/1/status \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"SHIPPED"}'
+```
+Expected: `400` with `"Cannot transition order out of CANCELLED status"`
+
+### User — update status (should fail)
+```bash
+curl -X PATCH http://localhost:8080/api/orders/1/status \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"SHIPPED"}'
+```
+Expected: `403`
+
+---
+
 ## Admin setup
 
 There is no register-as-admin endpoint (by design). To create an admin for testing, register normally
