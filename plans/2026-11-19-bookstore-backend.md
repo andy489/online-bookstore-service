@@ -240,13 +240,80 @@ Book  ──(N:1)──  Category
 | `TransactionRequiredException` in repositories | `@Transactional` only on service methods — never on repository |
 | Spring Security 6 API (`WebSecurityConfigurerAdapter` removed) | Lambda-DSL `SecurityFilterChain` from day one |
 | Order total wrong after book re-pricing | `priceAtPurchase` snapshot in `OrderItem` |
-| Credentials committed | Env vars only; `application-local.properties` in `.gitignore` |
+| Credentials committed | Env vars only; `application-local.yml` in `.gitignore` |
+
+---
+
+## Phase 9 — Database Migrations (Flyway)
+
+- [ ] Add `flyway-core` dependency to `build.gradle.kts`
+- [ ] Set `spring.flyway.enabled=true`, `spring.jpa.hibernate.ddl-auto=validate` in `application.yml`
+- [ ] Create `src/main/resources/db/migration/V1__init.sql`:
+  - DDL for all tables: `users`, `categories`, `books`, `carts`, `cart_items`, `orders`, `order_items`
+  - Indexes: `users(email)`, `books(deleted)`, `orders(user_id)`, `cart_items(cart_id, book_id)`
+- [ ] Create `V2__seed_admin.sql` — insert a default admin user (hashed password, role `ADMIN`) for local dev
+- [ ] Verify clean `docker compose up --build` runs all migrations in order
+- [ ] Add `spring.flyway.locations=classpath:db/migration` to `application.yml`
+- [ ] Commit: `feat: add Flyway schema migrations`
+
+---
+
+## Phase 10 — Frontend (React + TypeScript)
+
+### Setup
+
+- [ ] Scaffold with Vite: `npm create vite@latest bookstore-ui -- --template react-ts`
+- [ ] Place under `frontend/` in the repo root
+- [ ] Add `axios` for HTTP, `react-router-dom` for routing, `zustand` for lightweight state
+- [ ] Configure Vite proxy: `/api` → `http://localhost:8080` (avoids CORS in dev)
+- [ ] Commit: `chore: scaffold React/TypeScript frontend`
+
+### Auth
+
+- [ ] `POST /api/auth/register` — Register form (email, password, firstName, lastName)
+- [ ] `POST /api/auth/login` — Login form
+- [ ] Store JWT in `localStorage`; attach as `Authorization: Bearer` header via Axios interceptor
+- [ ] Protected route wrapper — redirect to `/login` if no token
+- [ ] Commit: `feat: frontend auth — register, login, JWT handling`
+
+### Books & Browse
+
+- [ ] Book list page — search bar, category filter dropdown, price range inputs, sort controls
+- [ ] Paginated results grid — book card (cover, title, author, price, "Add to Cart" button)
+- [ ] Book detail page — full description, stock indicator, quantity selector
+- [ ] Commit: `feat: frontend book browse and search`
+
+### Cart
+
+- [ ] Cart page — list items, quantity controls, remove button, total
+- [ ] "Add to Cart" calls `POST /api/cart/items`; cart icon shows item count in nav
+- [ ] Commit: `feat: frontend shopping cart`
+
+### Checkout & Orders
+
+- [ ] Checkout button on cart page → `POST /api/orders` → redirect to order confirmation
+- [ ] Order history page — list user's orders with status badge
+- [ ] Order detail page — items, prices, status
+- [ ] Commit: `feat: frontend checkout and order history`
+
+### Admin Panel
+
+- [ ] Admin-only route guard (`role === 'ADMIN'`)
+- [ ] Category management page — list, create, edit, delete
+- [ ] Book management page — list, create, edit, soft-delete
+- [ ] Order management page — list all orders, status update dropdown
+- [ ] Commit: `feat: frontend admin panel`
+
+### Polish
+
+- [ ] Loading states and error messages on all forms
+- [ ] 404 and empty-state pages
+- [ ] Responsive layout (mobile-friendly)
+- [ ] Commit: `feat: frontend polish — loading states, responsive layout`
 
 ---
 
 ## Post-Completion
 
-- [ ] Add Flyway for proper schema migrations (if started with `schema.sql`)
 - [ ] Add Testcontainers integration tests (PostgreSQL)
-- [ ] Add `springdoc-openapi` for Swagger UI
 - [ ] Move plan to `plans/completed/`
