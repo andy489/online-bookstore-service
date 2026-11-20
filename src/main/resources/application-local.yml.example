@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/bookstore
+    username: bookstore
+    password: bookstore
+
+app:
+  jwt:
+    secret: <your-base64-secret>
+    expiration-ms: 86400000

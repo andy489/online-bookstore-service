@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: online-bookstore-service
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bookstore}
+    username: ${DB_USERNAME:bookstore}
+    password: ${DB_PASSWORD:bookstore}
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}

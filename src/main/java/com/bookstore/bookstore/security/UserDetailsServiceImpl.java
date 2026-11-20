@@ -1,7 +1,6 @@
 package com.bookstore.bookstore.security;
 
 import com.bookstore.bookstore.domain.User;
-import com.bookstore.bookstore.exception.ResourceNotFoundException;
 import com.bookstore.bookstore.repository.UserRepository;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;

@@ -15,6 +15,19 @@ repositories {
     mavenCentral()
 }
 
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.webjars" && requested.name == "swagger-ui") {
+            useVersion("5.25.3")
+            because("CVE-2025-48924: force upgrade of transitive swagger-ui to patched version")
+        }
+        if (requested.group == "org.apache.commons" && requested.name == "commons-lang3") {
+            useVersion("3.18.0")
+            because("CVE-2025-48924: commons-lang3 < 3.18.0 vulnerable to StackOverflowError via ClassUtils.getClass")
+        }
+    }
+}
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-security")
@@ -30,7 +43,7 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     // OpenAPI / Swagger UI
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6")
 
     // Dev tools
     developmentOnly("org.springframework.boot:spring-boot-devtools")
