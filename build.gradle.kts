@@ -51,6 +51,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-cache")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
+    // Cloudinary — image hosting
+    implementation("com.cloudinary:cloudinary-http45:1.39.0")
+
     // Dev tools
     developmentOnly("org.springframework.boot:spring-boot-devtools")
 

@@ -12,6 +12,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -24,10 +25,13 @@ public class BookService {
 
     private final BookRepository bookRepository;
     private final CategoryRepository categoryRepository;
+    private final CloudinaryService cloudinaryService;
 
-    public BookService(BookRepository bookRepository, CategoryRepository categoryRepository) {
+    public BookService(BookRepository bookRepository, CategoryRepository categoryRepository,
+                       CloudinaryService cloudinaryService) {
         this.bookRepository = bookRepository;
         this.categoryRepository = categoryRepository;
+        this.cloudinaryService = cloudinaryService;
     }
 
     @Cacheable(value = "books",
@@ -98,6 +102,18 @@ public class BookService {
                 .orElseThrow(() -> new ResourceNotFoundException("Book not found: " + id));
         book.setDeleted(true);
         bookRepository.save(book);
+    }
+
+    @CacheEvict(value = "books", allEntries = true)
+    @Transactional
+    public BookResponse uploadCover(Long id, MultipartFile file) {
+        Book book = bookRepository.findActiveById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Book not found: " + id));
+        String publicId = "book-" + id;
+        String url = cloudinaryService.uploadCover(file, publicId);
+        book.setCoverImageUrl(url);
+        bookRepository.save(book);
+        return BookResponse.from(book);
     }
 
     private Category resolveCategory(Long categoryId) {
