@@ -20,7 +20,9 @@ public class OrderRepositoryImpl implements OrderRepository {
                         "SELECT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.book WHERE o.id = :id",
                         Order.class)
                 .setParameter("id", id)
-                .getResultStream()
+                .setMaxResults(1)
+                .getResultList()
+                .stream()
                 .findFirst();
     }
 
@@ -34,11 +36,19 @@ public class OrderRepositoryImpl implements OrderRepository {
     }
 
     @Override
-    public List<Order> findAll() {
+    public List<Order> findAll(int page, int size) {
         return em.createQuery(
                         "SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.book ORDER BY o.createdAt DESC",
                         Order.class)
+                .setFirstResult(page * size)
+                .setMaxResults(size)
                 .getResultList();
+    }
+
+    @Override
+    public long countAll() {
+        return em.createQuery("SELECT COUNT(o) FROM Order o", Long.class)
+                .getSingleResult();
     }
 
     @Override

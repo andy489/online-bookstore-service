@@ -24,8 +24,8 @@ class CacheIntegrationTest extends AbstractIntegrationTest {
     void getById_populatesCacheOnFirstCall() {
         // Find a valid ID from seeded data
         var allBooks = bookService.search(null, null, null, null, 0, 1, "title", "asc");
-        assertThat(allBooks.getContent()).isNotEmpty();
-        Long id = allBooks.getContent().get(0).getId();
+        assertThat(allBooks.content()).isNotEmpty();
+        Long id = allBooks.content().get(0).id();
 
         // First call — cache miss, hits DB
         BookResponse first = bookService.getById(id);
@@ -33,7 +33,7 @@ class CacheIntegrationTest extends AbstractIntegrationTest {
         // Second call — should come from cache (same result)
         BookResponse second = bookService.getById(id);
 
-        assertThat(first.getTitle()).isEqualTo(second.getTitle());
+        assertThat(first.title()).isEqualTo(second.title());
 
         // Cache entry should exist
         var cache = cacheManager.getCache("books");
@@ -44,7 +44,7 @@ class CacheIntegrationTest extends AbstractIntegrationTest {
     @Test
     void delete_evictsCache() {
         var allBooks = bookService.search(null, null, null, null, 0, 1, "title", "asc");
-        Long id = allBooks.getContent().get(0).getId();
+        Long id = allBooks.content().get(0).id();
 
         // Populate cache
         bookService.getById(id);

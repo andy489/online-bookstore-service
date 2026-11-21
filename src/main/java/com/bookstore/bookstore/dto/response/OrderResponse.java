@@ -5,6 +5,7 @@ import com.bookstore.bookstore.domain.OrderStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 
 public class OrderResponse {
@@ -13,6 +14,7 @@ public class OrderResponse {
     private OrderStatus status;
     private BigDecimal totalPrice;
     private List<OrderItemResponse> items;
+    private List<OrderAdjustment> adjustments;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -24,8 +26,15 @@ public class OrderResponse {
         r.status = order.getStatus();
         r.totalPrice = order.getTotalPrice();
         r.items = order.getItems().stream().map(OrderItemResponse::from).toList();
+        r.adjustments = Collections.emptyList();
         r.createdAt = order.getCreatedAt();
         r.updatedAt = order.getUpdatedAt();
+        return r;
+    }
+
+    public static OrderResponse from(Order order, List<OrderAdjustment> adjustments) {
+        OrderResponse r = from(order);
+        r.adjustments = adjustments;
         return r;
     }
 
@@ -33,6 +42,7 @@ public class OrderResponse {
     public OrderStatus getStatus() { return status; }
     public BigDecimal getTotalPrice() { return totalPrice; }
     public List<OrderItemResponse> getItems() { return items; }
+    public List<OrderAdjustment> getAdjustments() { return adjustments; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

@@ -2,11 +2,11 @@ package com.bookstore.bookstore.service;
 
 import com.bookstore.bookstore.domain.*;
 import com.bookstore.bookstore.dto.request.UpdateOrderStatusRequest;
+import com.bookstore.bookstore.dto.response.OrderAdjustment;
 import com.bookstore.bookstore.dto.response.OrderResponse;
-import com.bookstore.bookstore.exception.InsufficientStockException;
+import com.bookstore.bookstore.dto.response.PageResponse;
 import com.bookstore.bookstore.exception.InvalidOperationException;
 import com.bookstore.bookstore.exception.ResourceNotFoundException;
-import com.bookstore.bookstore.repository.BookRepository;
 import com.bookstore.bookstore.repository.CartRepository;
 import com.bookstore.bookstore.repository.OrderRepository;
 import com.bookstore.bookstore.repository.UserRepository;
@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -21,14 +22,12 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
-    private final BookRepository bookRepository;
     private final UserRepository userRepository;
 
     public OrderService(OrderRepository orderRepository, CartRepository cartRepository,
-                        BookRepository bookRepository, UserRepository userRepository) {
+                        UserRepository userRepository) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
-        this.bookRepository = bookRepository;
         this.userRepository = userRepository;
     }
 
@@ -42,24 +41,34 @@ public class OrderService {
             throw new InvalidOperationException("Cannot place order with an empty cart");
         }
 
-        for (CartItem item : cart.getItems()) {
-            if (item.getBook().getStock() < item.getQuantity()) {
-                throw new InsufficientStockException(
-                        "Insufficient stock for '" + item.getBook().getTitle() + "': requested " +
-                        item.getQuantity() + ", available " + item.getBook().getStock());
-            }
-        }
-
         Order order = new Order(user, BigDecimal.ZERO);
         BigDecimal total = BigDecimal.ZERO;
+        List<OrderAdjustment> adjustments = new ArrayList<>();
 
         for (CartItem item : cart.getItems()) {
             Book book = item.getBook();
-            book.setStock(book.getStock() - item.getQuantity());
-            bookRepository.save(book);
+            int requested = item.getQuantity();
+            int available = book.getStock();
 
-            order.getItems().add(new OrderItem(order, book, item.getQuantity(), book.getPrice()));
-            total = total.add(book.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
+            if (available == 0) {
+                adjustments.add(new OrderAdjustment(book.getTitle(), requested, 0, "Out of stock"));
+                continue;
+            }
+
+            int fulfilled = Math.min(requested, available);
+            if (fulfilled < requested) {
+                adjustments.add(new OrderAdjustment(book.getTitle(), requested, fulfilled,
+                        "Only " + available + " in stock"));
+            }
+
+            book.setStock(available - fulfilled);
+
+            order.getItems().add(new OrderItem(order, book, fulfilled, book.getPrice()));
+            total = total.add(book.getPrice().multiply(BigDecimal.valueOf(fulfilled)));
+        }
+
+        if (order.getItems().isEmpty()) {
+            throw new InvalidOperationException("None of the items in your cart are in stock");
         }
 
         order.setTotalPrice(total);
@@ -68,7 +77,7 @@ public class OrderService {
         cart.getItems().clear();
         cartRepository.save(cart);
 
-        return OrderResponse.from(order);
+        return OrderResponse.from(order, adjustments);
     }
 
     @Transactional(readOnly = true)
@@ -91,10 +100,13 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
-    public List<OrderResponse> getAllOrders() {
-        return orderRepository.findAll().stream()
+    public PageResponse<OrderResponse> getAllOrders(int page, int size) {
+        List<OrderResponse> content = orderRepository.findAll(page, size).stream()
                 .map(OrderResponse::from)
                 .toList();
+        long total = orderRepository.countAll();
+        int totalPages = (int) Math.ceil((double) total / size);
+        return new PageResponse<>(content, page, size, total, totalPages);
     }
 
     @Transactional

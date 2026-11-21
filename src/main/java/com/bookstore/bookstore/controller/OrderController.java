@@ -2,6 +2,7 @@ package com.bookstore.bookstore.controller;
 
 import com.bookstore.bookstore.dto.request.UpdateOrderStatusRequest;
 import com.bookstore.bookstore.dto.response.OrderResponse;
+import com.bookstore.bookstore.dto.response.PageResponse;
 import com.bookstore.bookstore.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -51,11 +52,13 @@ public class OrderController {
         return ResponseEntity.ok(orderService.getById(id, userDetails.getUsername(), isAdmin));
     }
 
-    @Operation(summary = "List all orders (admin only)")
+    @Operation(summary = "List all orders with pagination (admin only)")
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<OrderResponse>> getAllOrders() {
-        return ResponseEntity.ok(orderService.getAllOrders());
+    public ResponseEntity<PageResponse<OrderResponse>> getAllOrders(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(orderService.getAllOrders(page, size));
     }
 
     @Operation(summary = "Update order status (admin only)")

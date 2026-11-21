@@ -50,10 +50,11 @@ public class CartController {
 
     @Operation(summary = "Remove a book from the cart")
     @DeleteMapping("/items/{bookId}")
-    public ResponseEntity<CartResponse> removeItem(
+    public ResponseEntity<Void> removeItem(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable Long bookId) {
-        return ResponseEntity.ok(cartService.removeItem(userDetails.getUsername(), bookId));
+        cartService.removeItem(userDetails.getUsername(), bookId);
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Clear the entire cart")

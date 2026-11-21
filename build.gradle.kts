@@ -52,8 +52,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
     // Rate limiting
-    implementation("com.bucket4j:bucket4j-core:8.14.0")
-    implementation("com.bucket4j:bucket4j-redis:8.14.0")
+    implementation("com.bucket4j:bucket4j-core:8.10.1")
+    implementation("com.bucket4j:bucket4j-redis:8.10.1")
 
     // Cloudinary — image hosting
     implementation("com.cloudinary:cloudinary-http45:1.39.0")
@@ -67,8 +67,10 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
     testImplementation("com.redis:testcontainers-redis:2.2.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    jvmArgs("-Dnet.bytebuddy.experimental=true")
 }

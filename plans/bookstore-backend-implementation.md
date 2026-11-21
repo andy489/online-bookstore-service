@@ -13,7 +13,7 @@
 | Language | Java 21 |
 | Framework | Spring Boot 3.4.1, Gradle Kotlin DSL |
 | Security | Spring Security 6, JWT (jjwt 0.12.6), PBKDF2 password encoder |
-| Database | PostgreSQL 16 (Docker), Flyway migrations (V1–V9) |
+| Database | PostgreSQL 16 (Docker), Flyway migrations (V1–V4) |
 | Caching | Redis 7 (Docker), Spring Cache with Jackson JSON serialization |
 | Image hosting | Cloudinary CDN (`bookstore/covers/` folder) |
 | API docs | springdoc-openapi 2.8.6 (Swagger UI at `/swagger-ui.html`) |
@@ -154,21 +154,28 @@ com.bookstore
 
 ## ✅ Phase 7 — Orders
 
-**What:** Atomic order placement with stock deduction, order history, admin status management.
+**What:** Partial-fulfillment order placement with stock deduction, order history, admin status management.
 
 - `OrderService.placeOrder` — single `@Transactional` method:
-  1. Load cart — throw `InvalidOperationException` if empty
-  2. **Validation pass** — check `book.stock >= item.quantity` for ALL items; throw `InsufficientStockException` on first failure (409)
-  3. **Mutation pass** — deduct stock from each book (optimistic lock via `@Version` catches concurrent orders)
-  4. Create `Order` (status `PENDING`) + `OrderItem`s with `priceAtPurchase` snapshot
-  5. `clearCart`
+  1. Load cart — throw `400` if empty
+  2. **Single pass** over cart items — for each item:
+     - `stock == 0` → skip item, record `OrderAdjustment` (fulfilled=0, reason="Out of stock")
+     - `stock < requested` → cap `fulfilled = stock`, record `OrderAdjustment` with reason
+     - `stock >= requested` → fulfill fully, no adjustment
+  3. Deduct fulfilled quantity from each book's stock (optimistic lock via `@Version` catches concurrent orders)
+  4. If no items could be fulfilled → throw `400` "None of the items in your cart are in stock"
+  5. Create `Order` (status `PENDING`) + `OrderItem`s with `priceAtPurchase` snapshot and fulfilled quantities
+  6. `clearCart`
+  7. Return `OrderResponse` with `adjustments` list — empty if everything was fulfilled as requested
 - `updateStatus` — ADMIN only; blocks any transition out of `CANCELLED`
 - `GET /api/orders/my` — calling user's history (DESC by createdAt)
-- `GET /api/orders/{id}` — own order (USER) or any order (ADMIN); 403 if USER requests another user's order
+- `GET /api/orders/{id}` — own order (USER) or any order (ADMIN); 404 if USER requests another user's order
 - `GET /api/orders` — ADMIN only
 - `PATCH /api/orders/{id}/status` — ADMIN only
 
-**Why two-pass validation/mutation:** Ensures we never partially deduct stock — either all items pass or none are touched.
+**Why partial fulfillment over all-or-nothing:** Rejecting the whole order when one item is out of stock causes unnecessary friction — the user has to manually remove the item and retry. Fulfilling what's available and reporting adjustments in the response is standard e-commerce behavior. The `adjustments` field gives the frontend everything needed to show a confirmation screen.
+
+**`OrderAdjustment` DTO fields:** `bookTitle`, `requested` (what user wanted), `fulfilled` (what was placed), `reason` (human-readable explanation).
 
 ---
 
@@ -189,15 +196,10 @@ com.bookstore
 
 | Migration | Contents |
 |---|---|
-| `V1__init.sql` | Full DDL — all tables + indexes |
-| `V2__seed_admin.sql` | `pesho@gmail.com` / password `1234` / role `USER` |
-| `V3__seed_books.sql` | 5 categories + 18 famous books |
-| `V4__seed_lehane_books.sql` | Dennis Lehane — Mystic River, Gone Baby Gone, Shutter Island |
-| `V5__seed_rumen_admin.sql` | `rumen@bookstore.local` / password `1234` / role `ADMIN` |
-| `V6__seed_anya_user.sql` | `anya@bookstore.local` / password `1234` / role `USER` |
-| `V7__seed_gattaca_related_books.sql` | Brave New World (Huxley) + The Selfish Gene (Dawkins) + Science & Non-Fiction category |
-| `V8__set_cover_image_urls.sql` | Sets local `/covers/{slug}.jpg` paths for all 23 books |
-| `V9__set_cloudinary_cover_urls.sql` | Overwrites with Cloudinary CDN URLs — final prod-ready state |
+| `V1__init.sql` | Full DDL — all tables + base indexes |
+| `V2__seed_users.sql` | 3 users in one INSERT: pesho (USER), rumen (ADMIN), anya (USER) |
+| `V3__seed_catalog.sql` | 6 categories + 23 books; Cloudinary cover URLs inline in INSERT (never null) |
+| `V4__add_indexes.sql` | Performance index: `idx_order_items_book_id` |
 
 **Seeded users (all password `1234`):**
 
@@ -208,6 +210,8 @@ com.bookstore
 | `rumen@bookstore.local` | ADMIN |
 
 **Seeded books:** 23 books across 6 categories (Classic Literature, War & Historical Fiction, Crime & Mystery, Philosophy & Drama, Epic & Adventure, Science & Non-Fiction).
+
+**Why V3 inlines cover URLs directly:** Earlier versions used a two-pass approach (V3 inserts books, V9 updates cover URLs). The consolidated V3 eliminates the intermediate state where books have no covers, simplifies the migration history, and makes the final seed state immediately clear.
 
 **Why Flyway over Liquibase:** SQL-first, simpler mental model, no XML/YAML ceremony, strong Spring Boot autoconfiguration. Liquibase is better for teams needing rollback scripts — not needed here.
 
@@ -299,6 +303,45 @@ Book  ──(N:1)──  Category
 
 ---
 
+## Concurrency Model
+
+**How requests run**
+
+Tomcat keeps a thread pool (default: up to 200 threads). Every HTTP request gets its own thread from that pool. Two users placing an order at the same millisecond run `OrderService.placeOrder()` simultaneously on two different threads inside the same JVM — there is no serialization between them by default.
+
+**The race condition**
+
+Without any guard, two threads can both read the same stock value and both decide they can fulfill it:
+
+```
+Thread A reads book.stock = 3 → decides to fulfill 3 → writes stock = 0
+Thread B reads book.stock = 3 → decides to fulfill 3 → writes stock = -3  ← oversell
+```
+
+**How `@Version` (optimistic locking) closes it**
+
+Hibernate adds a `WHERE version = ?` clause to every `UPDATE`. Only one thread can win:
+
+```sql
+-- Thread A wins (version was 0):
+UPDATE books SET stock = 0, version = 1 WHERE id = 42 AND version = 0;  -- 1 row affected ✓
+
+-- Thread B loses (version is now 1, not 0):
+UPDATE books SET stock = 0, version = 2 WHERE id = 42 AND version = 0;  -- 0 rows affected → OptimisticLockException
+```
+
+Thread B's transaction is rolled back automatically — no partial state, no oversell. The caller receives a 409.
+
+**Why optimistic over pessimistic locking**
+
+Pessimistic locking (`SELECT FOR UPDATE`) locks the row on the SELECT and holds it until commit. Every concurrent reader blocks every other reader. Under the typical read-heavy catalog workload, that's pure overhead on every request. Optimistic locking costs nothing on the read path and only fires on the rare actual collision — the right trade-off for e-commerce.
+
+**`@Transactional` is what makes the rollback safe**
+
+Both the read and the write happen inside a single `@Transactional` method. If `OptimisticLockException` fires mid-method, Spring rolls back the entire unit of work atomically: the order is not saved, the stock is not deducted, the cart is not cleared.
+
+---
+
 ## 🔲 Phase 10 — Frontend (React + TypeScript)
 
 **Not started.** This is the only remaining phase.
@@ -377,7 +420,7 @@ Book  ──(N:1)──  Category
 **How it works:**
 - `AbstractIntegrationTest` starts one `PostgreSQLContainer` and one `RedisContainer` as static fields — shared across all subclasses so Docker pays the startup cost once per test suite
 - `@DynamicPropertySource` overrides `spring.datasource.*` and `spring.data.redis.*` with the container's random ports at runtime
-- Flyway runs all V1–V9 migrations on the test DB before each test class — the same SQL that runs in production
+- Flyway runs all V1–V4 migrations on the test DB before each test class — the same SQL that runs in production
 
 **Tests written:**
 
@@ -415,3 +458,40 @@ Book  ──(N:1)──  Category
 **Dependencies added:** `bucket4j-core:8.14.0`, `bucket4j-redis:8.14.0`
 
 ---
+
+## ✅ Phase D — Unit, Controller, and Integration Tests
+
+**Problem:** Service logic, controller request validation, and cross-cutting flows (register→login→logout) had no automated test coverage.
+
+**Unit tests (no Spring context, pure Mockito):**
+
+| Class | What it tests |
+|---|---|
+| `OrderServiceUnitTest` | Full fulfillment, partial stock cap, zero-stock skip, all-out-of-stock exception, empty cart exception, exact stock deduction, cart cleared after order, price snapshot |
+| `CartServiceUnitTest` | Add item, increment quantity on duplicate, item not found, update quantity, update non-existent item, remove item, empty cart, clear cart |
+
+**Key unit test technique:** `Book.id` is a private field set only by JPA — unit tests inject it via reflection (`Book.class.getDeclaredField("id")`) so service code that compares IDs works without a real database.
+
+**Controller tests (`@WebMvcTest` with MockMvc):**
+
+| Class | What it tests |
+|---|---|
+| `AuthControllerMvcTest` | Register 201/400 (invalid email, short password, missing field)/409 (duplicate), login 200/400 (missing body)/403 (bad credentials) |
+
+**`@WebMvcTest` configuration notes:**
+- `@TestConfiguration` inner class provides a permissive `SecurityFilterChain` (all requests permitted, CSRF disabled) so controller logic is tested in isolation from security rules
+- `@MockBean` for `JwtAuthenticationFilter`, `RateLimitFilter`, `JwtTokenProvider`, `UserDetailsService` satisfies `@Component` scan
+- `@BeforeEach` configures filter mocks via `doAnswer` to call `chain.doFilter()` — prevents the mocked filters from silently swallowing requests
+
+**Integration tests (Testcontainers — require Docker):**
+
+| Class | What it tests |
+|---|---|
+| `OrderServiceIntegrationTest` | Place order with real DB: empty cart 400, full fulfillment, partial stock, all out of stock 400, stock deducted correctly, cart cleared |
+| `AuthFlowIntegrationTest` | Register→login→logout full flow, duplicate email 409, blocklist effective after logout |
+
+**Bug fixed during this phase:** `GlobalExceptionHandler` was missing a `@ExceptionHandler(BadCredentialsException.class)` — `AuthService.login()` throws it on wrong password, but it was falling through to the catch-all 500 handler. Added handler returning 403.
+
+**Build configuration:**
+- `testRuntimeOnly("org.junit.platform:junit-platform-launcher")` — required by Gradle 9.7
+- `jvmArgs("-Dnet.bytebuddy.experimental=true")` on the test task — Mockito's Byte Buddy dependency doesn't officially support Java 25 without this flag

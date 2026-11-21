@@ -19,7 +19,9 @@ public class CartRepositoryImpl implements CartRepository {
                         "SELECT c FROM Cart c LEFT JOIN FETCH c.items i LEFT JOIN FETCH i.book WHERE c.user.id = :userId",
                         Cart.class)
                 .setParameter("userId", userId)
-                .getResultStream()
+                .setMaxResults(1)
+                .getResultList()
+                .stream()
                 .findFirst();
     }
 

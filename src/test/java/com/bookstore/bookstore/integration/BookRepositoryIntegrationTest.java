@@ -22,15 +22,15 @@ class BookRepositoryIntegrationTest extends AbstractIntegrationTest {
     @Test
     void search_noFilters_returnsAllBooks() {
         var result = bookService.search(null, null, null, null, 0, 100, "title", "asc");
-        assertThat(result.getContent()).isNotEmpty();
+        assertThat(result.content()).isNotEmpty();
     }
 
     @Test
     void search_byQuery_returnsMatchingBooks() {
         var result = bookService.search("Dune", null, null, null, 0, 10, "title", "asc");
-        assertThat(result.getContent())
+        assertThat(result.content())
                 .isNotEmpty()
-                .allMatch(b -> b.getTitle().contains("Dune") || b.getAuthor().contains("Herbert"));
+                .allMatch(b -> b.title().contains("Dune") || b.author().contains("Herbert"));
     }
 
     @Test
@@ -38,9 +38,9 @@ class BookRepositoryIntegrationTest extends AbstractIntegrationTest {
         BigDecimal min = new BigDecimal("10.00");
         BigDecimal max = new BigDecimal("12.00");
         var result = bookService.search(null, null, min, max, 0, 100, "price", "asc");
-        assertThat(result.getContent()).isNotEmpty();
-        result.getContent().forEach(b ->
-                assertThat(b.getPrice())
+        assertThat(result.content()).isNotEmpty();
+        result.content().forEach(b ->
+                assertThat(b.price())
                         .isGreaterThanOrEqualTo(min)
                         .isLessThanOrEqualTo(max)
         );
@@ -49,19 +49,19 @@ class BookRepositoryIntegrationTest extends AbstractIntegrationTest {
     @Test
     void search_byCategoryThatDoesNotExist_returnsEmpty() {
         var result = bookService.search(null, Long.MAX_VALUE, null, null, 0, 10, "title", "asc");
-        assertThat(result.getContent()).isEmpty();
+        assertThat(result.content()).isEmpty();
     }
 
     @Test
     void search_pagination_secondPageHasFewerItems() {
         var page0 = bookService.search(null, null, null, null, 0, 5, "title", "asc");
         var page1 = bookService.search(null, null, null, null, 1, 5, "title", "asc");
-        assertThat(page0.getContent()).hasSize(5);
-        assertThat(page0.getContent()).doesNotContainAnyElementsOf(
-                page1.getContent().stream()
-                        .map(BookResponse::getTitle)
-                        .map(title -> page0.getContent().stream()
-                                .filter(b -> b.getTitle().equals(title))
+        assertThat(page0.content()).hasSize(5);
+        assertThat(page0.content()).doesNotContainAnyElementsOf(
+                page1.content().stream()
+                        .map(BookResponse::title)
+                        .map(title -> page0.content().stream()
+                                .filter(b -> b.title().equals(title))
                                 .findFirst().orElse(null))
                         .toList()
         );
