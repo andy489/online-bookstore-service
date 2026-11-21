@@ -2,6 +2,7 @@ package com.bookstore.bookstore.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
@@ -15,6 +16,7 @@ import org.springframework.data.redis.serializer.RedisSerializationContext;
 import java.time.Duration;
 
 @Configuration
+@EnableCaching
 public class CacheConfig {
 
     @Bean
@@ -23,7 +25,13 @@ public class CacheConfig {
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
                 .activateDefaultTyping(
-                        new com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator(),
+                        BasicPolymorphicTypeValidator.builder()
+                                .allowIfBaseType("com.bookstore.bookstore.")
+                                .allowIfSubType("com.bookstore.bookstore.")
+                                .allowIfSubType("java.util.")
+                                .allowIfSubType("java.math.")
+                                .allowIfSubType("java.time.")
+                                .build(),
                         ObjectMapper.DefaultTyping.NON_FINAL
                 );
 

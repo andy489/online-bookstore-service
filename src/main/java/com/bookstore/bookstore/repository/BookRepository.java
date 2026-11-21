@@ -16,4 +16,6 @@ public interface BookRepository {
                       int page, int size, String sortBy, String sortDir);
 
     long countSearch(String query, Long categoryId, BigDecimal minPrice, BigDecimal maxPrice);
+
+    long countByCategory(com.bookstore.bookstore.domain.Category category);
 }

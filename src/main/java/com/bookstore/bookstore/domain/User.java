@@ -33,6 +33,9 @@ public class User {
     @Column(nullable = false)
     private Instant updatedAt;
 
+    @Column(nullable = false)
+    private Instant tokenValidAfter;
+
     protected User() {}
 
     public User(String email, String passwordHash, String firstName, String lastName, Role role) {
@@ -47,6 +50,7 @@ public class User {
     private void onCreate() {
         createdAt = Instant.now();
         updatedAt = Instant.now();
+        tokenValidAfter = Instant.EPOCH;
     }
 
     @PreUpdate
@@ -67,4 +71,6 @@ public class User {
     public void setRole(Role role) { this.role = role; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public Instant getTokenValidAfter() { return tokenValidAfter; }
+    public void setTokenValidAfter(Instant tokenValidAfter) { this.tokenValidAfter = tokenValidAfter; }
 }

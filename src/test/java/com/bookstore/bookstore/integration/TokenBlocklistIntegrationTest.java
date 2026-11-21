@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 
-import java.util.Collections;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -56,7 +56,7 @@ class TokenBlocklistIntegrationTest extends AbstractIntegrationTest {
     private UserDetails buildUser(String email) {
         return User.withUsername(email)
                 .password("irrelevant")
-                .authorities(Collections.emptyList())
+                .authorities(List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_USER")))
                 .build();
     }
 }

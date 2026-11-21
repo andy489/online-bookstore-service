@@ -23,7 +23,9 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     public Optional<Category> findByName(String name) {
         return em.createQuery("SELECT c FROM Category c WHERE c.name = :name", Category.class)
                 .setParameter("name", name)
-                .getResultStream()
+                .setMaxResults(1)
+                .getResultList()
+                .stream()
                 .findFirst();
     }
 

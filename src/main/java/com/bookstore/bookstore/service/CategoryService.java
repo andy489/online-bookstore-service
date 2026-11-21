@@ -4,7 +4,9 @@ import com.bookstore.bookstore.domain.Category;
 import com.bookstore.bookstore.dto.request.CategoryRequest;
 import com.bookstore.bookstore.dto.response.CategoryResponse;
 import com.bookstore.bookstore.exception.DuplicateResourceException;
+import com.bookstore.bookstore.exception.InvalidOperationException;
 import com.bookstore.bookstore.exception.ResourceNotFoundException;
+import com.bookstore.bookstore.repository.BookRepository;
 import com.bookstore.bookstore.repository.CategoryRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,17 +17,21 @@ import java.util.List;
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final BookRepository bookRepository;
 
-    public CategoryService(CategoryRepository categoryRepository) {
+    public CategoryService(CategoryRepository categoryRepository, BookRepository bookRepository) {
         this.categoryRepository = categoryRepository;
+        this.bookRepository = bookRepository;
     }
 
+    @Transactional(readOnly = true)
     public List<CategoryResponse> listAll() {
         return categoryRepository.findAll().stream()
                 .map(CategoryResponse::from)
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public CategoryResponse getById(Long id) {
         return CategoryResponse.from(findOrThrow(id));
     }
@@ -55,6 +61,10 @@ public class CategoryService {
     @Transactional
     public void delete(Long id) {
         Category category = findOrThrow(id);
+        if (bookRepository.countByCategory(category) > 0) {
+            throw new InvalidOperationException(
+                    "Cannot delete category '" + category.getName() + "' — it still has associated books");
+        }
         categoryRepository.delete(category);
     }
 

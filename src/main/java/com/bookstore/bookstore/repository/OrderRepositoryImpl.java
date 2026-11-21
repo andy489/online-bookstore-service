@@ -27,21 +27,50 @@ public class OrderRepositoryImpl implements OrderRepository {
     }
 
     @Override
-    public List<Order> findByUserId(Long userId) {
-        return em.createQuery(
-                        "SELECT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.book WHERE o.user.id = :userId ORDER BY o.createdAt DESC",
-                        Order.class)
+    public List<Order> findByUserId(Long userId, int page, int size) {
+        List<Long> ids = em.createQuery(
+                        "SELECT o.id FROM Order o WHERE o.user.id = :userId ORDER BY o.createdAt DESC",
+                        Long.class)
                 .setParameter("userId", userId)
+                .setFirstResult(page * size)
+                .setMaxResults(size)
+                .getResultList();
+
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+
+        return em.createQuery(
+                        "SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.book WHERE o.id IN :ids ORDER BY o.createdAt DESC",
+                        Order.class)
+                .setParameter("ids", ids)
                 .getResultList();
     }
 
     @Override
+    public long countByUserId(Long userId) {
+        return em.createQuery("SELECT COUNT(o) FROM Order o WHERE o.user.id = :userId", Long.class)
+                .setParameter("userId", userId)
+                .getSingleResult();
+    }
+
+    @Override
     public List<Order> findAll(int page, int size) {
-        return em.createQuery(
-                        "SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.book ORDER BY o.createdAt DESC",
-                        Order.class)
+        List<Long> ids = em.createQuery(
+                        "SELECT o.id FROM Order o ORDER BY o.createdAt DESC",
+                        Long.class)
                 .setFirstResult(page * size)
                 .setMaxResults(size)
+                .getResultList();
+
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+
+        return em.createQuery(
+                        "SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.book WHERE o.id IN :ids ORDER BY o.createdAt DESC",
+                        Order.class)
+                .setParameter("ids", ids)
                 .getResultList();
     }
 

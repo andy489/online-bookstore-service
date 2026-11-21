@@ -82,10 +82,10 @@ class OrderServiceIntegrationTest extends AbstractIntegrationTest {
         cartService.addItem(EMAIL, 3L, 1);
         orderService.placeOrder(EMAIL);
 
-        var orders = orderService.getMyOrders(EMAIL);
+        var orders = orderService.getMyOrders(EMAIL, 0, 20);
 
-        assertThat(orders).isNotEmpty();
-        assertThat(orders.get(0).getStatus()).isEqualTo(OrderStatus.PENDING);
+        assertThat(orders.content()).isNotEmpty();
+        assertThat(orders.content().get(0).getStatus()).isEqualTo(OrderStatus.PENDING);
     }
 
     @Test
@@ -94,13 +94,13 @@ class OrderServiceIntegrationTest extends AbstractIntegrationTest {
         cartService.addItem("rumen@bookstore.local", 4L, 1);
         orderService.placeOrder("rumen@bookstore.local");
 
-        var myOrders = orderService.getMyOrders(EMAIL);
+        var myOrders = orderService.getMyOrders(EMAIL, 0, 20);
         // All returned orders must belong to EMAIL user
-        myOrders.forEach(o ->
+        myOrders.content().forEach(o ->
                 assertThat(o).extracting("status").isNotNull()
         );
         // The key assertion: no cross-contamination
-        assertThat(myOrders).allMatch(o -> o.getStatus() != null);
+        assertThat(myOrders.content()).allMatch(o -> o.getStatus() != null);
     }
 
     @Test

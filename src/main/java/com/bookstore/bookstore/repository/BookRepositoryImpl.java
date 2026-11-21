@@ -1,6 +1,7 @@
 package com.bookstore.bookstore.repository;
 
 import com.bookstore.bookstore.domain.Book;
+import com.bookstore.bookstore.domain.Category;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.criteria.*;
@@ -27,7 +28,9 @@ public class BookRepositoryImpl implements BookRepository {
         return em.createQuery(
                         "SELECT b FROM Book b WHERE b.id = :id AND b.deleted = false", Book.class)
                 .setParameter("id", id)
-                .getResultStream()
+                .setMaxResults(1)
+                .getResultList()
+                .stream()
                 .findFirst();
     }
 
@@ -79,6 +82,15 @@ public class BookRepositoryImpl implements BookRepository {
         return em.createQuery(cq).getSingleResult();
     }
 
+    @Override
+    public long countByCategory(Category category) {
+        return em.createQuery(
+                        "SELECT COUNT(b) FROM Book b WHERE b.category = :category AND b.deleted = false",
+                        Long.class)
+                .setParameter("category", category)
+                .getSingleResult();
+    }
+
     private List<Predicate> buildPredicates(CriteriaBuilder cb, Root<Book> root,
                                             String query, Long categoryId,
                                             BigDecimal minPrice, BigDecimal maxPrice) {
@@ -86,10 +98,11 @@ public class BookRepositoryImpl implements BookRepository {
         predicates.add(cb.isFalse(root.get("deleted")));
 
         if (query != null && !query.isBlank()) {
-            String pattern = "%" + query.toLowerCase() + "%";
+            String escaped = query.toLowerCase().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+            String pattern = "%" + escaped + "%";
             predicates.add(cb.or(
-                    cb.like(cb.lower(root.get("title")), pattern),
-                    cb.like(cb.lower(root.get("author")), pattern)
+                    cb.like(cb.lower(root.get("title")), pattern, '\\'),
+                    cb.like(cb.lower(root.get("author")), pattern, '\\')
             ));
         }
         if (categoryId != null) {

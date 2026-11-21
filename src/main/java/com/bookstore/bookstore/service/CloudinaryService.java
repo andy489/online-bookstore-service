@@ -2,6 +2,7 @@ package com.bookstore.bookstore.service;
 
 import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
+import com.bookstore.bookstore.exception.CloudinaryException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -32,7 +33,7 @@ public class CloudinaryService {
             );
             return (String) result.get("secure_url");
         } catch (IOException e) {
-            throw new RuntimeException("Failed to upload cover image to Cloudinary", e);
+            throw new CloudinaryException("Failed to upload cover image to Cloudinary", e);
         }
     }
 
@@ -40,7 +41,7 @@ public class CloudinaryService {
         try {
             cloudinary.uploader().destroy(FOLDER + "/" + publicId, ObjectUtils.emptyMap());
         } catch (IOException e) {
-            throw new RuntimeException("Failed to delete cover image from Cloudinary", e);
+            throw new CloudinaryException("Failed to delete cover image from Cloudinary", e);
         }
     }
 }

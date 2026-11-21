@@ -8,16 +8,18 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @Tag(name = "Orders", description = "Order placement and management")
+@Validated
 @SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/orders")
@@ -36,10 +38,13 @@ public class OrderController {
                 .body(orderService.placeOrder(userDetails.getUsername()));
     }
 
-    @Operation(summary = "Get own order history")
+    @Operation(summary = "Get own order history (paginated)")
     @GetMapping("/my")
-    public ResponseEntity<List<OrderResponse>> getMyOrders(@AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(orderService.getMyOrders(userDetails.getUsername()));
+    public ResponseEntity<PageResponse<OrderResponse>> getMyOrders(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ResponseEntity.ok(orderService.getMyOrders(userDetails.getUsername(), page, size));
     }
 
     @Operation(summary = "Get order by ID (own order for USER, any order for ADMIN)")
@@ -56,8 +61,8 @@ public class OrderController {
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PageResponse<OrderResponse>> getAllOrders(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return ResponseEntity.ok(orderService.getAllOrders(page, size));
     }
 

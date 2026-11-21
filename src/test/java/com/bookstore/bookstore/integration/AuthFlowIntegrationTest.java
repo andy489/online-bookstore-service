@@ -35,11 +35,7 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
 
         String extractedEmail = jwtTokenProvider.extractUsername(response.getToken());
         assertThat(extractedEmail).isEqualTo("auth-test-2@example.com");
-        assertThat(jwtTokenProvider.isTokenValid(response.getToken(),
-                org.springframework.security.core.userdetails.User
-                        .withUsername("auth-test-2@example.com")
-                        .password("x").authorities(java.util.Collections.emptyList()).build()))
-                .isTrue();
+        assertThat(jwtTokenProvider.isTokenValid(response.getToken())).isTrue();
     }
 
     @Test
