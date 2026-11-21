@@ -7,7 +7,7 @@ spring:
     username: ${DB_USERNAME:bookstore}
     password: ${DB_PASSWORD:bookstore}
     hikari:
-      maximum-pool-size: 20
+      maximum-pool-size: 20   # 5 replicas × 20 connections = 100 = PostgreSQL default max_connections
       minimum-idle: 5
       connection-timeout: 10000
       idle-timeout: 300000
@@ -29,7 +29,8 @@ spring:
 
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations:
+      - classpath:db/migration
 
   data:
     redis:
@@ -38,8 +39,6 @@ spring:
 
   cache:
     type: redis
-    redis:
-      time-to-live: 300000   # 5 minutes in ms
 
 app:
   jwt:

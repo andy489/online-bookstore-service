@@ -39,8 +39,15 @@ public class AuthController {
     @SecurityRequirement(name = "bearerAuth")
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(@RequestHeader("Authorization") String authHeader) {
+        if (authHeader == null || authHeader.length() < 8) {
+            return ResponseEntity.badRequest().build();
+        }
         String token = authHeader.substring(7);
-        authService.logout(token);
+        try {
+            authService.logout(token);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
         return ResponseEntity.noContent().build();
     }
 }

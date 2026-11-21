@@ -1,27 +1,29 @@
 package com.bookstore.bookstore.unit;
 
 import com.bookstore.bookstore.domain.*;
+import com.bookstore.bookstore.dto.request.UpdateOrderStatusRequest;
 import com.bookstore.bookstore.dto.response.OrderResponse;
 import com.bookstore.bookstore.exception.InvalidOperationException;
-import com.bookstore.bookstore.repository.CartRepository;
 import com.bookstore.bookstore.repository.OrderRepository;
 import com.bookstore.bookstore.repository.UserRepository;
+import com.bookstore.bookstore.service.OrderPlacer;
 import com.bookstore.bookstore.service.OrderService;
+import com.bookstore.bookstore.service.OrderStatusUpdater;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
-import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,85 +31,60 @@ import static org.mockito.Mockito.*;
 class OrderServiceUnitTest {
 
     @Mock OrderRepository orderRepository;
-    @Mock CartRepository cartRepository;
     @Mock UserRepository userRepository;
+    @Mock OrderPlacer orderPlacer;
+    @Mock OrderStatusUpdater orderStatusUpdater;
 
-    @InjectMocks OrderService orderService;
+    OrderService orderService;
 
     private User user;
-    private Category category;
 
     @BeforeEach
     void setUp() {
+        orderService = new OrderService(orderRepository, userRepository,
+                orderPlacer, orderStatusUpdater);
         user = new User("user@test.com", "hash", "Test", "User", Role.USER);
-        category = new Category("Fiction", "desc");
         when(userRepository.findByEmail("user@test.com")).thenReturn(Optional.of(user));
-        when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(cartRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
     @Test
-    void placeOrder_fullyFulfilled_noAdjustments() {
-        Cart cart = cartWith(book("Dune", 10, new BigDecimal("15.99")), 2);
-        when(cartRepository.findByUserId(any())).thenReturn(Optional.of(cart));
+    void placeOrder_delegatesToOrderPlacer() {
+        OrderResponse expected = mock(OrderResponse.class);
+        when(orderPlacer.place(user)).thenReturn(expected);
 
         OrderResponse response = orderService.placeOrder("user@test.com");
 
-        assertThat(response.getItems()).hasSize(1);
-        assertThat(response.getItems().get(0).getQuantity()).isEqualTo(2);
-        assertThat(response.getAdjustments()).isEmpty();
-        assertThat(response.getTotalPrice()).isEqualByComparingTo(new BigDecimal("31.98"));
+        assertThat(response).isSameAs(expected);
+        verify(orderPlacer).place(user);
     }
 
     @Test
-    void placeOrder_partialStock_capsFulfilledAndReportsAdjustment() {
-        Book book = book("Dune", 3, new BigDecimal("15.99"));
-        Cart cart = cartWith(book, 5);
-        when(cartRepository.findByUserId(any())).thenReturn(Optional.of(cart));
+    void placeOrder_retriesOnOptimisticLock_succeedsOnSecondAttempt() {
+        OrderResponse expected = mock(OrderResponse.class);
+        when(orderPlacer.place(user))
+                .thenThrow(new ObjectOptimisticLockingFailureException("Book", null))
+                .thenReturn(expected);
 
         OrderResponse response = orderService.placeOrder("user@test.com");
 
-        assertThat(response.getItems()).hasSize(1);
-        assertThat(response.getItems().get(0).getQuantity()).isEqualTo(3);
-        assertThat(response.getAdjustments()).hasSize(1);
-        assertThat(response.getAdjustments().get(0).getRequested()).isEqualTo(5);
-        assertThat(response.getAdjustments().get(0).getFulfilled()).isEqualTo(3);
-        assertThat(response.getAdjustments().get(0).getReason()).contains("3");
-        assertThat(book.getStock()).isZero();
+        assertThat(response).isSameAs(expected);
+        verify(orderPlacer, times(2)).place(user);
     }
 
     @Test
-    void placeOrder_zeroStock_skipsItemAndReportsAdjustment() {
-        Book outOfStock = book("Sold Out Book", 0, new BigDecimal("9.99"));
-        Book inStock = book("Available Book", 5, new BigDecimal("12.99"));
-        Cart cart = new Cart(user);
-        cart.getItems().add(new CartItem(cart, outOfStock, 1));
-        cart.getItems().add(new CartItem(cart, inStock, 2));
-        when(cartRepository.findByUserId(any())).thenReturn(Optional.of(cart));
-
-        OrderResponse response = orderService.placeOrder("user@test.com");
-
-        assertThat(response.getItems()).hasSize(1);
-        assertThat(response.getItems().get(0).getTitle()).isEqualTo("Available Book");
-        assertThat(response.getAdjustments()).hasSize(1);
-        assertThat(response.getAdjustments().get(0).getFulfilled()).isZero();
-        assertThat(response.getAdjustments().get(0).getReason()).isEqualTo("Out of stock");
-    }
-
-    @Test
-    void placeOrder_allItemsOutOfStock_throwsInvalidOperation() {
-        Book outOfStock = book("Ghost Book", 0, new BigDecimal("9.99"));
-        Cart cart = cartWith(outOfStock, 2);
-        when(cartRepository.findByUserId(any())).thenReturn(Optional.of(cart));
+    void placeOrder_exhaustsRetries_throwsInvalidOperation() {
+        when(orderPlacer.place(user))
+                .thenThrow(new ObjectOptimisticLockingFailureException("Book", null));
 
         assertThatThrownBy(() -> orderService.placeOrder("user@test.com"))
                 .isInstanceOf(InvalidOperationException.class)
-                .hasMessageContaining("None of the items in your cart are in stock");
+                .hasMessageContaining("Could not complete your order");
     }
 
     @Test
     void placeOrder_emptyCart_throwsInvalidOperation() {
-        when(cartRepository.findByUserId(any())).thenReturn(Optional.empty());
+        when(orderPlacer.place(user))
+                .thenThrow(new InvalidOperationException("Cannot place order with an empty cart"));
 
         assertThatThrownBy(() -> orderService.placeOrder("user@test.com"))
                 .isInstanceOf(InvalidOperationException.class)
@@ -115,45 +92,42 @@ class OrderServiceUnitTest {
     }
 
     @Test
-    void placeOrder_deductsStockExactly() {
-        Book book = book("Dune", 10, new BigDecimal("15.99"));
-        Cart cart = cartWith(book, 7);
-        when(cartRepository.findByUserId(any())).thenReturn(Optional.of(cart));
+    void updateStatus_delegatesToOrderStatusUpdater() {
+        UpdateOrderStatusRequest request = new UpdateOrderStatusRequest();
+        request.setStatus(OrderStatus.SHIPPED);
+        OrderResponse expected = mock(OrderResponse.class);
+        when(orderStatusUpdater.update(1L, request)).thenReturn(expected);
 
-        orderService.placeOrder("user@test.com");
+        OrderResponse response = orderService.updateStatus(1L, request);
 
-        assertThat(book.getStock()).isEqualTo(3);
+        assertThat(response).isSameAs(expected);
+        verify(orderStatusUpdater).update(1L, request);
     }
 
     @Test
-    void placeOrder_clearsCartAfterSuccess() {
-        Cart cart = cartWith(book("Dune", 10, new BigDecimal("15.99")), 1);
-        when(cartRepository.findByUserId(any())).thenReturn(Optional.of(cart));
+    void updateStatus_retriesOnOptimisticLock_succeedsOnSecondAttempt() {
+        UpdateOrderStatusRequest request = new UpdateOrderStatusRequest();
+        request.setStatus(OrderStatus.SHIPPED);
+        OrderResponse expected = mock(OrderResponse.class);
+        when(orderStatusUpdater.update(anyLong(), any()))
+                .thenThrow(new ObjectOptimisticLockingFailureException("Order", null))
+                .thenReturn(expected);
 
-        orderService.placeOrder("user@test.com");
+        OrderResponse response = orderService.updateStatus(1L, request);
 
-        assertThat(cart.getItems()).isEmpty();
-        verify(cartRepository, atLeastOnce()).save(cart);
+        assertThat(response).isSameAs(expected);
+        verify(orderStatusUpdater, times(2)).update(1L, request);
     }
 
     @Test
-    void placeOrder_priceSnapshotMatchesBookPrice() {
-        BigDecimal price = new BigDecimal("29.95");
-        Cart cart = cartWith(book("Expensive Book", 5, price), 1);
-        when(cartRepository.findByUserId(any())).thenReturn(Optional.of(cart));
+    void updateStatus_exhaustsRetries_throwsInvalidOperation() {
+        UpdateOrderStatusRequest request = new UpdateOrderStatusRequest();
+        request.setStatus(OrderStatus.SHIPPED);
+        when(orderStatusUpdater.update(anyLong(), any()))
+                .thenThrow(new ObjectOptimisticLockingFailureException("Order", null));
 
-        OrderResponse response = orderService.placeOrder("user@test.com");
-
-        assertThat(response.getItems().get(0).getPriceAtPurchase()).isEqualByComparingTo(price);
-    }
-
-    private Book book(String title, int stock, BigDecimal price) {
-        return new Book(title, "Author", "desc", price, stock, null, category);
-    }
-
-    private Cart cartWith(Book book, int quantity) {
-        Cart cart = new Cart(user);
-        cart.getItems().add(new CartItem(cart, book, quantity));
-        return cart;
+        assertThatThrownBy(() -> orderService.updateStatus(1L, request))
+                .isInstanceOf(InvalidOperationException.class)
+                .hasMessageContaining("Could not update order status");
     }
 }

@@ -20,6 +20,8 @@ public class TokenBlocklistService {
 
     public void block(String jti, Date expiration) {
         long ttlSeconds = Duration.between(Instant.now(), expiration.toInstant()).getSeconds();
+        // ttlSeconds <= 0 means the token is already expired — no need to block it,
+        // since JwtTokenProvider.isTokenValid will reject it on its own.
         if (ttlSeconds > 0) {
             redis.opsForValue().set(PREFIX + jti, "1", Duration.ofSeconds(ttlSeconds));
         }

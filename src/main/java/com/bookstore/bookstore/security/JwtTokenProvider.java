@@ -8,6 +8,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
@@ -26,13 +27,26 @@ public class JwtTokenProvider {
     }
 
     public String generateToken(UserDetails userDetails) {
+        return generateToken(userDetails, Instant.EPOCH);
+    }
+
+    public String generateToken(UserDetails userDetails, Instant tokenValidAfter) {
+        String role = userDetails.getAuthorities().iterator().next().getAuthority();
+        long now = System.currentTimeMillis();
         return Jwts.builder()
                 .subject(userDetails.getUsername())
-                .id(UUID.randomUUID().toString())   // jti claim — unique per token
-                .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expirationMs))
+                .id(UUID.randomUUID().toString())
+                .claim("role", role)
+                .claim("tva", tokenValidAfter.getEpochSecond())
+                .issuedAt(new Date(now))
+                .expiration(new Date(now + expirationMs))
                 .signWith(signingKey)
                 .compact();
+    }
+
+    /** Parses, verifies HMAC signature, and returns all claims in one operation. */
+    public Claims extractAllClaims(String token) {
+        return parseClaims(token);
     }
 
     public String extractUsername(String token) {
@@ -47,17 +61,19 @@ public class JwtTokenProvider {
         return parseClaims(token).getExpiration();
     }
 
-    public boolean isTokenValid(String token, UserDetails userDetails) {
+    /** Validates token signature, expiry, and subject in a single parse. */
+    public boolean isTokenValid(String token) {
         try {
-            String username = extractUsername(token);
-            return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+            Claims claims = parseClaims(token);
+            return claims.getSubject() != null && !claims.getExpiration().before(new Date());
         } catch (Exception e) {
             return false;
         }
     }
 
-    private boolean isTokenExpired(String token) {
-        return parseClaims(token).getExpiration().before(new Date());
+    /** Validates an already-parsed Claims object without re-parsing. */
+    public boolean isClaimsValid(Claims claims) {
+        return claims.getSubject() != null && !claims.getExpiration().before(new Date());
     }
 
     private Claims parseClaims(String token) {

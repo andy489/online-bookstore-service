@@ -3,6 +3,7 @@ package com.bookstore.bookstore.controller;
 import com.bookstore.bookstore.dto.request.ChangePasswordRequest;
 import com.bookstore.bookstore.dto.request.UpdateProfileRequest;
 import com.bookstore.bookstore.dto.response.UserProfileResponse;
+import com.bookstore.bookstore.service.AuthService;
 import com.bookstore.bookstore.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -20,9 +21,11 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
+    private final AuthService authService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, AuthService authService) {
         this.userService = userService;
+        this.authService = authService;
     }
 
     @Operation(summary = "Get own profile")
@@ -44,8 +47,11 @@ public class UserController {
     @PatchMapping("/me/password")
     public ResponseEntity<Void> changePassword(
             @AuthenticationPrincipal UserDetails userDetails,
+            @RequestHeader("Authorization") String authHeader,
             @Valid @RequestBody ChangePasswordRequest request) {
         userService.changePassword(userDetails.getUsername(), request);
+        // Blocklist the token used to make this request so it cannot be reused
+        authService.logout(authHeader.substring(7));
         return ResponseEntity.noContent().build();
     }
 }

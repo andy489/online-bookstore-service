@@ -38,13 +38,32 @@ public class CartService {
         Book book = bookRepository.findActiveById(bookId)
                 .orElseThrow(() -> new ResourceNotFoundException("Book not found: " + bookId));
 
-        cart.getItems().stream()
+        if (book.getStock() == 0) {
+            throw new com.bookstore.bookstore.exception.InvalidOperationException(
+                    "'" + book.getTitle() + "' is currently out of stock");
+        }
+
+        CartItem existing = cart.getItems().stream()
                 .filter(i -> i.getBook().getId().equals(bookId))
                 .findFirst()
-                .ifPresentOrElse(
-                        existing -> existing.setQuantity(existing.getQuantity() + quantity),
-                        () -> cart.getItems().add(new CartItem(cart, book, quantity))
-                );
+                .orElse(null);
+
+        if (existing == null && cart.getItems().size() >= 100) {
+            throw new com.bookstore.bookstore.exception.InvalidOperationException(
+                    "Cart cannot contain more than 100 distinct items");
+        }
+
+        int existingQuantity = existing != null ? existing.getQuantity() : 0;
+        if (existingQuantity + quantity > book.getStock()) {
+            throw new com.bookstore.bookstore.exception.InvalidOperationException(
+                    "Requested quantity exceeds available stock for '" + book.getTitle() + "'");
+        }
+
+        if (existing != null) {
+            existing.setQuantity(existing.getQuantity() + quantity);
+        } else {
+            cart.getItems().add(new CartItem(cart, book, quantity));
+        }
 
         cartRepository.save(cart);
         return CartResponse.from(cart);
@@ -53,7 +72,13 @@ public class CartService {
     @Transactional
     public CartResponse updateItem(String email, Long bookId, Integer quantity) {
         Cart cart = getCartOrThrow(resolveUser(email));
-        findItemOrThrow(cart, bookId).setQuantity(quantity);
+        CartItem item = findItemOrThrow(cart, bookId);
+        Book book = item.getBook();
+        if (quantity > book.getStock()) {
+            throw new com.bookstore.bookstore.exception.InvalidOperationException(
+                    "Requested quantity exceeds available stock for '" + book.getTitle() + "'");
+        }
+        item.setQuantity(quantity);
         cartRepository.save(cart);
         return CartResponse.from(cart);
     }
@@ -97,7 +122,7 @@ public class CartService {
     }
 
     private User resolveUser(String email) {
-        return userRepository.findByEmail(email)
+        return userRepository.findByEmail(email.toLowerCase())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 }

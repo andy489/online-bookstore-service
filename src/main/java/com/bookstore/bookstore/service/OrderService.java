@@ -2,98 +2,72 @@ package com.bookstore.bookstore.service;
 
 import com.bookstore.bookstore.domain.*;
 import com.bookstore.bookstore.dto.request.UpdateOrderStatusRequest;
-import com.bookstore.bookstore.dto.response.OrderAdjustment;
 import com.bookstore.bookstore.dto.response.OrderResponse;
 import com.bookstore.bookstore.dto.response.PageResponse;
 import com.bookstore.bookstore.exception.InvalidOperationException;
 import com.bookstore.bookstore.exception.ResourceNotFoundException;
-import com.bookstore.bookstore.repository.CartRepository;
 import com.bookstore.bookstore.repository.OrderRepository;
 import com.bookstore.bookstore.repository.UserRepository;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class OrderService {
 
-    private final OrderRepository orderRepository;
-    private final CartRepository cartRepository;
-    private final UserRepository userRepository;
+    private static final int MAX_PLACE_ORDER_RETRIES = 3;
 
-    public OrderService(OrderRepository orderRepository, CartRepository cartRepository,
-                        UserRepository userRepository) {
+    private final OrderRepository orderRepository;
+    private final UserRepository userRepository;
+    private final OrderPlacer orderPlacer;
+    private final OrderStatusUpdater orderStatusUpdater;
+
+    public OrderService(OrderRepository orderRepository,
+                        UserRepository userRepository,
+                        OrderPlacer orderPlacer, OrderStatusUpdater orderStatusUpdater) {
         this.orderRepository = orderRepository;
-        this.cartRepository = cartRepository;
         this.userRepository = userRepository;
+        this.orderPlacer = orderPlacer;
+        this.orderStatusUpdater = orderStatusUpdater;
     }
 
-    @Transactional
     public OrderResponse placeOrder(String email) {
         User user = resolveUser(email);
-        Cart cart = cartRepository.findByUserId(user.getId())
-                .orElseThrow(() -> new InvalidOperationException("Cannot place order with an empty cart"));
-
-        if (cart.getItems().isEmpty()) {
-            throw new InvalidOperationException("Cannot place order with an empty cart");
-        }
-
-        Order order = new Order(user, BigDecimal.ZERO);
-        BigDecimal total = BigDecimal.ZERO;
-        List<OrderAdjustment> adjustments = new ArrayList<>();
-
-        for (CartItem item : cart.getItems()) {
-            Book book = item.getBook();
-            int requested = item.getQuantity();
-            int available = book.getStock();
-
-            if (available == 0) {
-                adjustments.add(new OrderAdjustment(book.getTitle(), requested, 0, "Out of stock"));
-                continue;
+        for (int attempt = 1; attempt <= MAX_PLACE_ORDER_RETRIES; attempt++) {
+            try {
+                return orderPlacer.place(user);
+            } catch (ObjectOptimisticLockingFailureException e) {
+                if (attempt == MAX_PLACE_ORDER_RETRIES) {
+                    throw new InvalidOperationException(
+                            "Could not complete your order due to concurrent stock updates — please try again");
+                }
             }
-
-            int fulfilled = Math.min(requested, available);
-            if (fulfilled < requested) {
-                adjustments.add(new OrderAdjustment(book.getTitle(), requested, fulfilled,
-                        "Only " + available + " in stock"));
-            }
-
-            book.setStock(available - fulfilled);
-
-            order.getItems().add(new OrderItem(order, book, fulfilled, book.getPrice()));
-            total = total.add(book.getPrice().multiply(BigDecimal.valueOf(fulfilled)));
         }
-
-        if (order.getItems().isEmpty()) {
-            throw new InvalidOperationException("None of the items in your cart are in stock");
-        }
-
-        order.setTotalPrice(total);
-        orderRepository.save(order);
-
-        cart.getItems().clear();
-        cartRepository.save(cart);
-
-        return OrderResponse.from(order, adjustments);
+        throw new InvalidOperationException("Order placement failed unexpectedly");
     }
 
     @Transactional(readOnly = true)
-    public List<OrderResponse> getMyOrders(String email) {
+    public PageResponse<OrderResponse> getMyOrders(String email, int page, int size) {
         User user = resolveUser(email);
-        return orderRepository.findByUserId(user.getId()).stream()
+        List<OrderResponse> content = orderRepository.findByUserId(user.getId(), page, size).stream()
                 .map(OrderResponse::from)
                 .toList();
+        long total = orderRepository.countByUserId(user.getId());
+        int totalPages = (int) Math.ceil((double) total / size);
+        return new PageResponse<>(content, page, size, total, totalPages);
     }
 
     @Transactional(readOnly = true)
     public OrderResponse getById(Long orderId, String email, boolean isAdmin) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderId));
+        if (isAdmin) {
+            return OrderResponse.from(order);
+        }
         User user = resolveUser(email);
-        if (!isAdmin && !order.getUser().getId().equals(user.getId())) {
+        if (!order.getUser().getId().equals(user.getId())) {
             throw new ResourceNotFoundException("Order not found: " + orderId);
         }
         return OrderResponse.from(order);
@@ -109,20 +83,22 @@ public class OrderService {
         return new PageResponse<>(content, page, size, total, totalPages);
     }
 
-    @Transactional
     public OrderResponse updateStatus(Long orderId, UpdateOrderStatusRequest request) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderId));
-        if (order.getStatus() == OrderStatus.CANCELLED) {
-            throw new InvalidOperationException("Cannot transition order out of CANCELLED status");
+        for (int attempt = 1; attempt <= MAX_PLACE_ORDER_RETRIES; attempt++) {
+            try {
+                return orderStatusUpdater.update(orderId, request);
+            } catch (ObjectOptimisticLockingFailureException e) {
+                if (attempt == MAX_PLACE_ORDER_RETRIES) {
+                    throw new InvalidOperationException(
+                            "Could not update order status due to concurrent modifications — please retry");
+                }
+            }
         }
-        order.setStatus(request.getStatus());
-        orderRepository.save(order);
-        return OrderResponse.from(order);
+        throw new InvalidOperationException("Order status update failed unexpectedly");
     }
 
     private User resolveUser(String email) {
-        return userRepository.findByEmail(email)
+        return userRepository.findByEmail(email.toLowerCase())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 }
