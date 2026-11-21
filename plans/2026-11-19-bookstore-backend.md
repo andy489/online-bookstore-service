@@ -349,9 +349,39 @@ Book  ──(N:1)──  Category
 
 ---
 
-## 🔲 Optional Future Work
+## 🔲 Optional Phase A — JWT Blocklist (Real Logout)
 
-- [ ] JWT blocklist via Redis (real logout — store invalidated JTI with TTL matching token expiry)
-- [ ] Testcontainers integration tests (PostgreSQL + Redis)
-- [ ] Rate limiting on auth endpoints
+Right now logout is client-side only — deleting the token from `localStorage` doesn't invalidate it on the server. A stolen token stays valid until expiry.
+
+- [ ] Add `jti` (unique token ID) claim when generating JWTs in `JwtTokenProvider`
+- [ ] `POST /api/auth/logout` — store `jti` in Redis with TTL equal to remaining token lifetime
+- [ ] `JwtAuthenticationFilter` — on each request check Redis for `jti`; reject with 401 if found
+- [ ] Uses the Redis instance already in place — no new infrastructure needed
+
+---
+
+## 🔲 Optional Phase B — Integration Tests (Testcontainers)
+
+Right now there are no integration tests. Unit tests mock the DB, which means bugs in Flyway migrations, Criteria API queries, or Redis serialization go undetected until production.
+
+- [ ] Add `testcontainers` BOM + `postgresql` + `redis` modules to `build.gradle.kts`
+- [ ] `BookRepositoryIntegrationTest` — spin up real PostgreSQL, run Flyway migrations, test `search(...)` with multiple filter combinations
+- [ ] `OrderServiceIntegrationTest` — test concurrent `placeOrder` calls trigger optimistic lock correctly
+- [ ] `CacheIntegrationTest` — spin up real Redis, verify `@Cacheable` hits and `@CacheEvict` invalidates
+
+---
+
+## 🔲 Optional Phase C — Rate Limiting
+
+Auth endpoints are currently unprotected against brute-force password attacks.
+
+- [ ] Add `bucket4j-spring-boot-starter` + Redis backend to `build.gradle.kts`
+- [ ] Apply token-bucket rate limit to `POST /api/auth/login` and `POST /api/auth/register` — e.g. 5 attempts per minute per IP
+- [ ] Return `429 Too Many Requests` with `Retry-After` header when limit exceeded
+- [ ] Bucket state stored in Redis so limits are enforced consistently across multiple app instances
+
+---
+
+## 🔲 Housekeeping
+
 - [ ] Move plan to `plans/completed/` when Phase 10 is done
