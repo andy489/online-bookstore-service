@@ -5,13 +5,14 @@ import com.bookstore.bookstore.dto.request.RegisterRequest;
 import com.bookstore.bookstore.dto.response.AuthResponse;
 import com.bookstore.bookstore.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "Auth", description = "Register and login")
+@Tag(name = "Auth", description = "Register, login and logout")
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -32,5 +33,14 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @Operation(summary = "Logout — invalidate the current JWT")
+    @SecurityRequirement(name = "bearerAuth")
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.substring(7);
+        authService.logout(token);
+        return ResponseEntity.noContent().build();
     }
 }

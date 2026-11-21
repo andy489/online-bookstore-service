@@ -51,6 +51,10 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-cache")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
+    // Rate limiting
+    implementation("com.bucket4j:bucket4j-core:8.14.0")
+    implementation("com.bucket4j:bucket4j-redis:8.14.0")
+
     // Cloudinary — image hosting
     implementation("com.cloudinary:cloudinary-http45:1.39.0")
 
@@ -60,6 +64,9 @@ dependencies {
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:postgresql")
+    testImplementation("com.redis:testcontainers-redis:2.2.2")
 }
 
 tasks.withType<Test> {

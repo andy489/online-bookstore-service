@@ -1,0 +1,20 @@
+# Test configuration — Testcontainers overrides datasource/redis via @DynamicPropertySource
+# JWT secret must be a valid base64-encoded 512-bit key (64 bytes)
+app:
+  jwt:
+    secret: dGVzdHNlY3JldHRlc3RzZWNyZXR0ZXN0c2VjcmV0dGVzdHNlY3JldHRlc3RzZWNyZXR0ZXN0c2Vj
+    expiration-ms: 86400000
+  cloudinary:
+    cloud-name: test
+    api-key: test
+    api-secret: test
+
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  cache:
+    type: redis

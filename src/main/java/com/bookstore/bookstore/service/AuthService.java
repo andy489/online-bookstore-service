@@ -24,17 +24,20 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
+    private final TokenBlocklistService tokenBlocklistService;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtTokenProvider jwtTokenProvider,
                        AuthenticationManager authenticationManager,
-                       UserDetailsService userDetailsService) {
+                       UserDetailsService userDetailsService,
+                       TokenBlocklistService tokenBlocklistService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
         this.authenticationManager = authenticationManager;
         this.userDetailsService = userDetailsService;
+        this.tokenBlocklistService = tokenBlocklistService;
     }
 
     @Transactional
@@ -67,5 +70,10 @@ public class AuthService {
 
         User user = userRepository.findByEmail(request.getEmail()).orElseThrow();
         return new AuthResponse(token, user.getEmail(), user.getRole().name());
+    }
+
+    public void logout(String token) {
+        String jti = jwtTokenProvider.extractJti(token);
+        tokenBlocklistService.block(jti, jwtTokenProvider.extractExpiration(token));
     }
 }

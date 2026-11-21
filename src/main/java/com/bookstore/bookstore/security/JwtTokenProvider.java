@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.util.Base64;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtTokenProvider {
@@ -27,6 +28,7 @@ public class JwtTokenProvider {
     public String generateToken(UserDetails userDetails) {
         return Jwts.builder()
                 .subject(userDetails.getUsername())
+                .id(UUID.randomUUID().toString())   // jti claim — unique per token
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(signingKey)
@@ -35,6 +37,14 @@ public class JwtTokenProvider {
 
     public String extractUsername(String token) {
         return parseClaims(token).getSubject();
+    }
+
+    public String extractJti(String token) {
+        return parseClaims(token).getId();
+    }
+
+    public Date extractExpiration(String token) {
+        return parseClaims(token).getExpiration();
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {

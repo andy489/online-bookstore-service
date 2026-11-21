@@ -1,5 +1,6 @@
 package com.bookstore.bookstore.security;
 
+import com.bookstore.bookstore.service.TokenBlocklistService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,10 +21,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserDetailsService userDetailsService;
+    private final TokenBlocklistService tokenBlocklistService;
 
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserDetailsService userDetailsService) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider,
+                                   UserDetailsService userDetailsService,
+                                   TokenBlocklistService tokenBlocklistService) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.userDetailsService = userDetailsService;
+        this.tokenBlocklistService = tokenBlocklistService;
     }
 
     @Override
@@ -39,10 +44,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String token = authHeader.substring(7);
         String username;
+        String jti;
 
         try {
             username = jwtTokenProvider.extractUsername(token);
+            jti = jwtTokenProvider.extractJti(token);
         } catch (Exception e) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // Reject tokens that have been explicitly invalidated (logout)
+        if (tokenBlocklistService.isBlocked(jti)) {
             filterChain.doFilter(request, response);
             return;
         }

@@ -349,39 +349,69 @@ Book  ──(N:1)──  Category
 
 ---
 
-## 🔲 Optional Phase A — JWT Blocklist (Real Logout)
+## ✅ Phase A — JWT Blocklist (Real Logout)
 
-Right now logout is client-side only — deleting the token from `localStorage` doesn't invalidate it on the server. A stolen token stays valid until expiry.
+**Problem:** JWT is stateless — once issued, it's valid until expiry even if the user logs out. A stolen token stays usable.
 
-- [ ] Add `jti` (unique token ID) claim when generating JWTs in `JwtTokenProvider`
-- [ ] `POST /api/auth/logout` — store `jti` in Redis with TTL equal to remaining token lifetime
-- [ ] `JwtAuthenticationFilter` — on each request check Redis for `jti`; reject with 401 if found
-- [ ] Uses the Redis instance already in place — no new infrastructure needed
+**How it works:**
+1. Every generated token now includes a `jti` (JWT ID) claim — a UUID unique per token
+2. `POST /api/auth/logout` (authenticated) extracts the `jti` and stores it in Redis with TTL = remaining token lifetime
+3. `JwtAuthenticationFilter` checks `TokenBlocklistService.isBlocked(jti)` on every request — blocked tokens are silently rejected
 
----
+**Why Redis:** TTL-based expiry is built in — no cleanup job needed. The key auto-deletes when the token would have expired anyway, so the blocklist never grows unboundedly.
 
-## 🔲 Optional Phase B — Integration Tests (Testcontainers)
-
-Right now there are no integration tests. Unit tests mock the DB, which means bugs in Flyway migrations, Criteria API queries, or Redis serialization go undetected until production.
-
-- [ ] Add `testcontainers` BOM + `postgresql` + `redis` modules to `build.gradle.kts`
-- [ ] `BookRepositoryIntegrationTest` — spin up real PostgreSQL, run Flyway migrations, test `search(...)` with multiple filter combinations
-- [ ] `OrderServiceIntegrationTest` — test concurrent `placeOrder` calls trigger optimistic lock correctly
-- [ ] `CacheIntegrationTest` — spin up real Redis, verify `@Cacheable` hits and `@CacheEvict` invalidates
-
----
-
-## 🔲 Optional Phase C — Rate Limiting
-
-Auth endpoints are currently unprotected against brute-force password attacks.
-
-- [ ] Add `bucket4j-spring-boot-starter` + Redis backend to `build.gradle.kts`
-- [ ] Apply token-bucket rate limit to `POST /api/auth/login` and `POST /api/auth/register` — e.g. 5 attempts per minute per IP
-- [ ] Return `429 Too Many Requests` with `Retry-After` header when limit exceeded
-- [ ] Bucket state stored in Redis so limits are enforced consistently across multiple app instances
+**Files:**
+- `JwtTokenProvider` — added `.id(UUID.randomUUID())` to token builder; added `extractJti()`, `extractExpiration()`
+- `TokenBlocklistService` — `block(jti, expiration)` → `Redis SET blocklist:{jti} 1 EX {ttl}`; `isBlocked(jti)` → `Redis EXISTS`
+- `JwtAuthenticationFilter` — checks blocklist before accepting token
+- `AuthService.logout(token)` — extracts jti and delegates to `TokenBlocklistService`
+- `AuthController POST /api/auth/logout` — authenticated endpoint, 204 No Content
+- `SecurityConfig` — `/api/auth/logout` requires authentication (not `permitAll`)
 
 ---
 
-## 🔲 Housekeeping
+## ✅ Phase B — Integration Tests (Testcontainers)
 
-- [ ] Move plan to `plans/completed/` when Phase 10 is done
+**Problem:** Unit tests mock the database and Redis. Bugs in Flyway migrations, Criteria API queries, or cache serialization go undetected until production.
+
+**How it works:**
+- `AbstractIntegrationTest` starts one `PostgreSQLContainer` and one `RedisContainer` as static fields — shared across all subclasses so Docker pays the startup cost once per test suite
+- `@DynamicPropertySource` overrides `spring.datasource.*` and `spring.data.redis.*` with the container's random ports at runtime
+- Flyway runs all V1–V9 migrations on the test DB before each test class — the same SQL that runs in production
+
+**Tests written:**
+
+| Class | What it tests |
+|---|---|
+| `BookRepositoryIntegrationTest` | `BookService.search()` with no filters, by query, by price range, by non-existent category, pagination |
+| `TokenBlocklistIntegrationTest` | Token not blocked before logout, blocked after, different tokens have unique JTIs |
+| `CacheIntegrationTest` | `@Cacheable` populates cache on first call, `@CacheEvict` on delete clears the entry |
+
+**Files:**
+- `src/test/java/.../integration/AbstractIntegrationTest.java` — shared base class
+- `BookRepositoryIntegrationTest`, `TokenBlocklistIntegrationTest`, `CacheIntegrationTest`
+- `src/test/resources/application.yml` — test config with dummy JWT secret and Cloudinary values
+
+**Dependencies added:** `testcontainers:junit-jupiter`, `testcontainers:postgresql`, `testcontainers-redis:2.2.2`
+
+---
+
+## ✅ Phase C — Rate Limiting (Bucket4j + Redis)
+
+**Problem:** `POST /api/auth/login` and `/register` are open to brute-force attacks — no limit on how many attempts an IP can make per minute.
+
+**How it works:**
+- Token bucket algorithm (Bucket4j): each IP gets a bucket of 5 tokens, refilled every minute
+- Each login/register request consumes 1 token; when empty → 429 Too Many Requests
+- Bucket state lives in Redis (key `rate:/api/auth/login:{ip}`) — survives app restarts and works across multiple app instances
+- `X-Forwarded-For` header is respected for IPs behind a load balancer
+
+**Why token bucket:** Allows short bursts (all 5 attempts at once) while still bounding the sustained rate — better UX than a fixed window that resets abruptly.
+
+**Files:**
+- `RateLimitFilter extends OncePerRequestFilter` — checks path, resolves IP, consults Redis bucket; returns 429 JSON with `Retry-After: 60` header on limit exceeded
+- `SecurityConfig` — `rateLimitFilter` registered before `jwtAuthenticationFilter`
+
+**Dependencies added:** `bucket4j-core:8.14.0`, `bucket4j-redis:8.14.0`
+
+---

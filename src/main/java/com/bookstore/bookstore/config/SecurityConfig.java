@@ -1,6 +1,7 @@
 package com.bookstore.bookstore.config;
 
 import com.bookstore.bookstore.security.JwtAuthenticationFilter;
+import com.bookstore.bookstore.security.RateLimitFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -26,11 +27,14 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserDetailsService userDetailsService;
+    private final RateLimitFilter rateLimitFilter;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
-                          UserDetailsService userDetailsService) {
+                          UserDetailsService userDetailsService,
+                          RateLimitFilter rateLimitFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.userDetailsService = userDetailsService;
+        this.rateLimitFilter = rateLimitFilter;
     }
 
     @Bean
@@ -41,11 +45,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers("/api/auth/logout").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/books/**", "/api/categories/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
+                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
