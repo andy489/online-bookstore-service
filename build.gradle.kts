@@ -41,6 +41,8 @@ dependencies {
 
     // Database
     runtimeOnly("org.postgresql:postgresql")
+    implementation("org.flywaydb:flyway-core")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql")
 
     // OpenAPI / Swagger UI
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6")

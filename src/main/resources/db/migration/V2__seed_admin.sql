@@ -1,0 +1,13 @@
+-- Seed a default admin user for local development.
+-- Password is set to a placeholder; update it after first run:
+--
+--   1. Register via POST /api/auth/register with email admin@bookstore.local
+--   2. Then run:  UPDATE users SET role = 'ADMIN' WHERE email = 'admin@bookstore.local';
+--
+-- Alternatively, uncomment and fill in a real PBKDF2-encoded hash below:
+--
+-- INSERT INTO users (email, password_hash, first_name, last_name, role, created_at, updated_at)
+-- VALUES ('admin@bookstore.local',
+--         '<pbkdf2-hash-of-your-password>',
+--         'Admin', 'User', 'ADMIN',
+--         NOW(), NOW());
