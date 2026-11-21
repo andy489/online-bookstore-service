@@ -317,3 +317,90 @@ Book  ──(N:1)──  Category
 
 - [ ] Add Testcontainers integration tests (PostgreSQL)
 - [ ] Move plan to `plans/completed/`
+
+---
+
+## Phase 11 — Redis Caching
+
+### Why Redis here
+
+`GET /api/books` and `GET /api/books/{id}` hit PostgreSQL on every request. Book catalog data
+changes rarely (only when an admin creates/updates/deletes a book). Redis caches responses
+so repeated reads are served from memory instead of the database.
+
+### What is cached
+
+| Cache name | Key pattern | Evicted when |
+|---|---|---|
+| `books` | `search:<params>` | any book created / updated / deleted |
+| `books` | `id:<id>` | any book created / updated / deleted |
+
+`allEntries = true` on eviction is intentional: a stock change, price edit, or new book
+invalidates all search result pages (they may contain the changed book).
+
+### Implementation
+
+- `build.gradle.kts` — add `spring-boot-starter-cache` + `spring-boot-starter-data-redis`
+- `CacheConfig.java` — `RedisCacheManager` bean wired with `GenericJackson2JsonRedisSerializer`
+  (JSON serialization — no need for `Serializable` on DTOs); TTL 5 minutes
+- `BookstoreApplication` — `@EnableCaching`
+- `BookService`:
+  - `@Cacheable(value = "books", key = "...")` on `search(...)` and `getById(...)`
+  - `@CacheEvict(value = "books", allEntries = true)` on `create`, `update`, `delete`
+- `application.yml` — `spring.data.redis.host: ${REDIS_HOST:localhost}` (falls back to localhost in dev)
+
+### Docker setup
+
+`docker-compose.yml` runs `redis:7-alpine` with:
+- `--appendonly yes` — AOF persistence so cache survives container restarts
+- named volume `redis_data` for durability
+- healthcheck via `redis-cli ping`
+- `app` service depends on `redis` being healthy before starting
+
+In dev without Docker, a local Redis on `localhost:6379` works with no extra config.
+
+---
+
+## Book Cover Images — Dev vs Prod Strategy
+
+### How it works in dev (current)
+
+Images are downloaded from Open Library and stored in:
+```
+src/main/resources/static/covers/{slug}.jpg
+```
+Spring Boot auto-serves everything under `static/` at the root path, so:
+```
+GET http://localhost:8080/covers/dune.jpg
+```
+returns the file with no extra controller code.
+
+The `cover_image_url` column in the database stores the relative path:
+```
+/covers/dune.jpg
+```
+`BookResponse.coverImageUrl` returns this value. The React frontend renders:
+```tsx
+<img src={book.coverImageUrl} />         // resolves to http://localhost:8080/covers/dune.jpg
+```
+
+**V8 migration** (`V8__set_cover_image_urls.sql`) sets these paths for all 23 seeded books.
+
+### How to switch to prod (S3 / CDN)
+
+1. Upload all images from `src/main/resources/static/covers/` to an S3 bucket (or any CDN)
+2. Write a Flyway migration (e.g. `V9__set_prod_cover_urls.sql`) that updates the DB values:
+   ```sql
+   UPDATE books SET cover_image_url = 'https://cdn.example.com/covers/dune.jpg' WHERE title = 'Dune';
+   -- ...etc
+   ```
+3. The Spring Boot `static/` folder and the `cover_image_url` values in the DB are independent —
+   changing the DB values to CDN URLs requires zero code changes; the frontend renders whatever
+   URL the API returns.
+4. Optionally remove `src/main/resources/static/covers/` from the Docker image to keep it lean.
+
+### Why not a redirect endpoint
+
+A `GET /api/books/{id}/cover` → `302` redirect would let you hide the storage backend from
+the frontend, but adds an extra HTTP round-trip per image with no benefit at this scale.
+The direct URL approach is what every major e-commerce platform uses once a CDN is in place.

@@ -20,6 +20,16 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 300000   # 5 minutes in ms
+
 app:
   jwt:
     secret: ${JWT_SECRET}

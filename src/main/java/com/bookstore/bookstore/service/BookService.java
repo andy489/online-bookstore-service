@@ -8,6 +8,8 @@ import com.bookstore.bookstore.dto.response.PageResponse;
 import com.bookstore.bookstore.exception.ResourceNotFoundException;
 import com.bookstore.bookstore.repository.BookRepository;
 import com.bookstore.bookstore.repository.CategoryRepository;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +30,8 @@ public class BookService {
         this.categoryRepository = categoryRepository;
     }
 
+    @Cacheable(value = "books",
+               key = "'search:' + #query + ':' + #categoryId + ':' + #minPrice + ':' + #maxPrice + ':' + #page + ':' + #size + ':' + #sortBy + ':' + #sortDir")
     public PageResponse<BookResponse> search(String query, Long categoryId,
                                              BigDecimal minPrice, BigDecimal maxPrice,
                                              int page, int size,
@@ -46,12 +50,14 @@ public class BookService {
         return new PageResponse<>(content, page, size, total, totalPages);
     }
 
+    @Cacheable(value = "books", key = "'id:' + #id")
     public BookResponse getById(Long id) {
         Book book = bookRepository.findActiveById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Book not found: " + id));
         return BookResponse.from(book);
     }
 
+    @CacheEvict(value = "books", allEntries = true)
     @Transactional
     public BookResponse create(BookRequest request) {
         Category category = resolveCategory(request.getCategoryId());
@@ -68,6 +74,7 @@ public class BookService {
         return BookResponse.from(book);
     }
 
+    @CacheEvict(value = "books", allEntries = true)
     @Transactional
     public BookResponse update(Long id, BookRequest request) {
         Book book = bookRepository.findActiveById(id)
@@ -84,6 +91,7 @@ public class BookService {
         return BookResponse.from(book);
     }
 
+    @CacheEvict(value = "books", allEntries = true)
     @Transactional
     public void delete(Long id) {
         Book book = bookRepository.findActiveById(id)
