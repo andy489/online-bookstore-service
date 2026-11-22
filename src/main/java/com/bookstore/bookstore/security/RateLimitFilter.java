@@ -52,9 +52,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        String ip = Optional.ofNullable(request.getHeader("X-Forwarded-For"))
-                .map(h -> h.split(",")[0].trim())
-                .orElse(request.getRemoteAddr());
+        // Bug #3 fix: only trust X-Forwarded-For if the direct connection comes from loopback
+        // (i.e. a trusted local reverse proxy). Otherwise use the real remote address.
+        String remoteAddr = request.getRemoteAddr();
+        boolean trustedProxy = "127.0.0.1".equals(remoteAddr) || "0:0:0:0:0:0:0:1".equals(remoteAddr);
+        String ip;
+        if (trustedProxy) {
+            ip = Optional.ofNullable(request.getHeader("X-Forwarded-For"))
+                    .map(h -> h.split(",")[0].trim())
+                    .orElse(remoteAddr);
+        } else {
+            ip = remoteAddr;
+        }
         String bucketKey = "rate:" + path + ":" + ip;
 
         Bucket bucket = buckets.builder().build(bucketKey, BUCKET_CONFIG);

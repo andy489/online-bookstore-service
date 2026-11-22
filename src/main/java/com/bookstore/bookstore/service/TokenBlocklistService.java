@@ -19,6 +19,8 @@ public class TokenBlocklistService {
     }
 
     public void block(String jti, Date expiration) {
+        // Bug #6 fix: null jti is a no-op — null-jti tokens are rejected by the filter (fail-closed)
+        if (jti == null) return;
         long ttlSeconds = Duration.between(Instant.now(), expiration.toInstant()).getSeconds();
         // ttlSeconds <= 0 means the token is already expired — no need to block it,
         // since JwtTokenProvider.isTokenValid will reject it on its own.
@@ -28,6 +30,8 @@ public class TokenBlocklistService {
     }
 
     public boolean isBlocked(String jti) {
+        // Bug #6 fix: null jti treated as blocked (fail-closed) — handled by caller
+        if (jti == null) return true;
         return Boolean.TRUE.equals(redis.hasKey(PREFIX + jti));
     }
 }

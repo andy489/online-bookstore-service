@@ -35,7 +35,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/categories
 ```bash
 export USER_TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"alex@test.com","password":"1234","firstName":"Alex","lastName":"Test"}' | jq -r '.token')
+  -d '{"email":"alex@test.com","password":"password123","firstName":"Alex","lastName":"Test"}' | jq -r '.token')
 echo $USER_TOKEN
 ```
 
@@ -57,7 +57,7 @@ for i in 1 2 3 4 5 6; do
 done
 ```
 
-Expected: attempts 1–5 return `403` (wrong credentials but request reached the handler). Attempt **6** returns `429`:
+Expected: attempts 1–5 return `401` (wrong credentials but request reached the handler). Attempt **6** returns `429`:
 ```json
 {"message": "Too many requests. Please try again later."}
 ```
@@ -124,7 +124,7 @@ curl -s -X PATCH http://localhost:8080/api/users/me/password \
   -d '{"currentPassword":"password123","newPassword":"newpass456"}' | jq
 ```
 
-Expected `204` (no body). Get a fresh token with the new password:
+Expected `204` (no body). The password change **immediately blocklists** `$USER_TOKEN` — that token is no longer valid even though it hasn't expired. Fetch a fresh token with the new password:
 
 ```bash
 export USER_TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
@@ -520,7 +520,7 @@ curl -s -X PATCH http://localhost:8080/api/orders/1/status \
   -d '{"status":"SHIPPED"}' | jq
 ```
 
-Expected `400`: `{"message": "Cannot transition order out of CANCELLED status"}`
+Expected `400`: `{"message": "Cannot transition order from CANCELLED to SHIPPED"}`
 
 ---
 
@@ -691,7 +691,7 @@ curl -s -X POST http://localhost:8080/api/auth/register \
 curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"alex@test.com","password":"wrongpassword"}' | jq
-# Expected 403
+# Expected 401
 
 # Change password with wrong current password
 curl -s -X PATCH http://localhost:8080/api/users/me/password \
@@ -732,3 +732,6 @@ curl -s -X POST http://localhost:8080/api/books \
 | `V2__seed_users.sql` | All 3 seed users |
 | `V3__seed_catalog.sql` | 6 categories + 23 books with cover URLs |
 | `V4__add_indexes.sql` | `order_items.book_id` index |
+| `V5__add_constraints.sql` | CHECK constraints on stock and quantity columns |
+| `V6__add_version_and_check_constraints.sql` | `version` column on orders (optimistic locking), enum CHECK constraints |
+| `V7__add_token_valid_after.sql` | `token_valid_after` column on users |

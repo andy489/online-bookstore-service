@@ -1,5 +1,6 @@
 package com.bookstore.bookstore.security;
 
+import com.bookstore.bookstore.repository.UserRepository;
 import com.bookstore.bookstore.service.TokenBlocklistService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
@@ -23,11 +24,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final TokenBlocklistService tokenBlocklistService;
+    private final UserRepository userRepository;
 
     public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider,
-                                   TokenBlocklistService tokenBlocklistService) {
+                                   TokenBlocklistService tokenBlocklistService,
+                                   UserRepository userRepository) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.tokenBlocklistService = tokenBlocklistService;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -51,8 +55,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        // Bug #6 fix: null jti must be treated as blocked (fail-closed)
         String jti = claims.getId();
-        if (tokenBlocklistService.isBlocked(jti)) {
+        if (jti == null || tokenBlocklistService.isBlocked(jti)) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -60,14 +65,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String username = claims.getSubject();
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             if (jwtTokenProvider.isClaimsValid(claims)) {
+                // Bug #1 fix: compare token iat against tokenValidAfter from DB, not from token
                 Instant tokenIssuedAt = claims.getIssuedAt().toInstant();
-                Long tvaEpochSec = claims.get("tva", Long.class);
-                Instant tokenValidAfter = tvaEpochSec != null
-                        ? Instant.ofEpochSecond(tvaEpochSec) : Instant.EPOCH;
+                Instant tokenValidAfter = userRepository.findByEmail(username.toLowerCase())
+                        .map(u -> u.getTokenValidAfter() != null ? u.getTokenValidAfter() : Instant.EPOCH)
+                        .orElse(Instant.MAX); // unknown user → reject
 
-                // Allow tokens issued at or after the threshold set at login time
                 if (tokenIssuedAt.compareTo(tokenValidAfter) >= 0) {
                     String role = claims.get("role", String.class);
+                    if (role == null || role.isBlank()) {
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
                     var authorities = List.of(new SimpleGrantedAuthority(role));
                     var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
                     auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

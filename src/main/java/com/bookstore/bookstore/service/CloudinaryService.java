@@ -32,7 +32,8 @@ public class CloudinaryService {
                     )
             );
             return (String) result.get("secure_url");
-        } catch (IOException e) {
+        } catch (Exception e) {
+            // Bug #9 fix: catch all exceptions (SDK throws RuntimeException subclasses too)
             throw new CloudinaryException("Failed to upload cover image to Cloudinary", e);
         }
     }
@@ -40,7 +41,8 @@ public class CloudinaryService {
     public void deleteCover(String publicId) {
         try {
             cloudinary.uploader().destroy(FOLDER + "/" + publicId, ObjectUtils.emptyMap());
-        } catch (IOException e) {
+        } catch (Exception e) {
+            // Bug #9 fix: catch all exceptions
             throw new CloudinaryException("Failed to delete cover image from Cloudinary", e);
         }
     }

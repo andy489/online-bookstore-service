@@ -144,14 +144,14 @@ class AuthControllerMvcTest {
     }
 
     @Test
-    void login_wrongPassword_returns403() throws Exception {
+    void login_wrongPassword_returns401() throws Exception {
         LoginRequest req = loginRequest("user@test.com", "wrongpassword");
         when(authService.login(any())).thenThrow(new BadCredentialsException("Bad credentials"));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

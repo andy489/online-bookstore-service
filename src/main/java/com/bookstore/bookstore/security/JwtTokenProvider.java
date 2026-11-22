@@ -8,7 +8,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
@@ -27,17 +26,12 @@ public class JwtTokenProvider {
     }
 
     public String generateToken(UserDetails userDetails) {
-        return generateToken(userDetails, Instant.EPOCH);
-    }
-
-    public String generateToken(UserDetails userDetails, Instant tokenValidAfter) {
         String role = userDetails.getAuthorities().iterator().next().getAuthority();
         long now = System.currentTimeMillis();
         return Jwts.builder()
                 .subject(userDetails.getUsername())
                 .id(UUID.randomUUID().toString())
                 .claim("role", role)
-                .claim("tva", tokenValidAfter.getEpochSecond())
                 .issuedAt(new Date(now))
                 .expiration(new Date(now + expirationMs))
                 .signWith(signingKey)

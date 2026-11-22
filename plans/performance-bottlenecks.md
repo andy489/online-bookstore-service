@@ -88,7 +88,7 @@ Same 3 UPDATEs, but sent together at the end rather than one-by-one during the l
 
 ### Result
 
-Removed redundant per-item `save()` calls. JPA dirty checking flushes all stock updates atomically at transaction commit. `BookRepository` dependency removed from `OrderService`.
+Removed redundant per-item `save()` calls. JPA dirty checking flushes all stock updates atomically at transaction commit. `BookRepository` dependency removed from `OrderService` — the fulfillment logic now lives in `OrderPlacer`, which also has no `BookRepository` dependency (relying solely on JPA dirty checking).
 
 ---
 

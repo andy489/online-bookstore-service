@@ -10,6 +10,8 @@ The cover URLs are seeded directly in the books INSERT statements inside:
 src/main/resources/db/migration/V3__seed_catalog.sql
 ```
 
+A copy of this file also exists under `src/main/resources/db/seed/V3__seed_catalog.sql` — that copy is used only when the `dev` Spring profile is active (via `application-dev.yml`). To change a seeded cover URL, update `db/migration/V3__seed_catalog.sql` (which runs in all environments). The `db/seed/` copy is only relevant for a bare dev setup that skips the standard migration.
+
 Each book row includes a `cover_image_url` column set to its Cloudinary CDN URL as part of the INSERT — there is no separate UPDATE pass. Example:
 
 ```sql
@@ -23,7 +25,11 @@ VALUES ('The Brothers Karamazov',
         FALSE, 0, NOW(), NOW()),
 ```
 
-If you need to change a cover URL, update the matching row in `V3__seed_catalog.sql`, drop and recreate the database (`docker-compose down -v && docker-compose up -d`), and restart the app.
+If you need to change a cover URL, update the matching row in `V3__seed_catalog.sql` (`db/migration/`), drop and recreate the database (`docker-compose down -v && docker-compose up -d`), and restart the app.
+
+## Cover cleanup on update
+
+When an admin updates a book via `PUT /api/books/{id}` and the `coverImageUrl` field changes to a new Cloudinary URL, `BookService.update()` automatically deletes the old Cloudinary asset (best-effort — failure is logged, not propagated) before saving the new URL. This prevents orphaned assets from accumulating in the `bookstore/covers/` folder.
 
 ---
 

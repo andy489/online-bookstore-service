@@ -21,6 +21,10 @@ public class CartItem {
     @Column(nullable = false)
     private Integer quantity;
 
+    // Bug #5 fix: optimistic locking prevents lost-update races on concurrent quantity changes
+    @Version
+    private Long version;
+
     protected CartItem() {}
 
     public CartItem(Cart cart, Book book, Integer quantity) {

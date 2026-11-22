@@ -25,7 +25,7 @@ public class CartService {
         this.userRepository = userRepository;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public CartResponse getCart(String email) {
         User user = resolveUser(email);
         return CartResponse.from(findOrCreate(user));

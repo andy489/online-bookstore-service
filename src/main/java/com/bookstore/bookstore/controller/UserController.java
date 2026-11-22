@@ -11,7 +11,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Users", description = "User profile management")
@@ -31,25 +30,25 @@ public class UserController {
     @Operation(summary = "Get own profile")
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> getProfile(
-            @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(userService.getProfile(userDetails.getUsername()));
+            @AuthenticationPrincipal String email) {
+        return ResponseEntity.ok(userService.getProfile(email));
     }
 
     @Operation(summary = "Update own profile (firstName, lastName)")
     @PutMapping("/me")
     public ResponseEntity<UserProfileResponse> updateProfile(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal String email,
             @Valid @RequestBody UpdateProfileRequest request) {
-        return ResponseEntity.ok(userService.updateProfile(userDetails.getUsername(), request));
+        return ResponseEntity.ok(userService.updateProfile(email, request));
     }
 
     @Operation(summary = "Change own password")
     @PatchMapping("/me/password")
     public ResponseEntity<Void> changePassword(
-            @AuthenticationPrincipal UserDetails userDetails,
+            @AuthenticationPrincipal String email,
             @RequestHeader("Authorization") String authHeader,
             @Valid @RequestBody ChangePasswordRequest request) {
-        userService.changePassword(userDetails.getUsername(), request);
+        userService.changePassword(email, request);
         // Blocklist the token used to make this request so it cannot be reused
         authService.logout(authHeader.substring(7));
         return ResponseEntity.noContent().build();

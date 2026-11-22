@@ -13,8 +13,8 @@ import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,35 +33,36 @@ public class OrderController {
 
     @Operation(summary = "Place an order from the current cart")
     @PostMapping
-    public ResponseEntity<OrderResponse> placeOrder(@AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<OrderResponse> placeOrder(@AuthenticationPrincipal String email) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(orderService.placeOrder(userDetails.getUsername()));
+                .body(orderService.placeOrder(email));
     }
 
     @Operation(summary = "Get own order history (paginated)")
     @GetMapping("/my")
     public ResponseEntity<PageResponse<OrderResponse>> getMyOrders(
-            @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @AuthenticationPrincipal String email,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(10_000) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ResponseEntity.ok(orderService.getMyOrders(userDetails.getUsername(), page, size));
+        return ResponseEntity.ok(orderService.getMyOrders(email, page, size));
     }
 
     @Operation(summary = "Get order by ID (own order for USER, any order for ADMIN)")
     @GetMapping("/{id}")
     public ResponseEntity<OrderResponse> getById(
             @PathVariable Long id,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        boolean isAdmin = userDetails.getAuthorities().stream()
+            @AuthenticationPrincipal String email,
+            Authentication authentication) {
+        boolean isAdmin = authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-        return ResponseEntity.ok(orderService.getById(id, userDetails.getUsername(), isAdmin));
+        return ResponseEntity.ok(orderService.getById(id, email, isAdmin));
     }
 
     @Operation(summary = "List all orders with pagination (admin only)")
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PageResponse<OrderResponse>> getAllOrders(
-            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(10_000) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return ResponseEntity.ok(orderService.getAllOrders(page, size));
     }

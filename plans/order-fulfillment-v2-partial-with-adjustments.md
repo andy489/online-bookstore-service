@@ -54,12 +54,19 @@ A DTO with four fields:
 ### Modified: `OrderResponse.java`
 Added `List<OrderAdjustment> adjustments` field. Added a second static factory `from(Order, List<OrderAdjustment>)` used only by `placeOrder`. All other calls (get order, update status) use the original `from(Order)` which sets `adjustments` to an empty list.
 
-### Modified: `OrderService.placeOrder()`
-Replaced the two-pass validate-then-mutate loop with a single pass that:
+### Modified: `OrderService` and new `OrderPlacer`
+
+The place-order logic was extracted from `OrderService` into a separate `@Component` bean called `OrderPlacer`. `OrderService.placeOrder` now:
+1. Resolves the user
+2. Calls `orderPlacer.place(user)` in a retry loop (up to 3 attempts on `ObjectOptimisticLockingFailureException`)
+
+`OrderPlacer.place(User user)` is a `public @Transactional` method that runs the fulfillment logic:
 1. Caps `fulfilled = Math.min(requested, available)`
 2. Records an `OrderAdjustment` if `fulfilled < requested` or `fulfilled == 0`
 3. Only adds an `OrderItem` if `fulfilled > 0`
 4. Throws `400` only if the entire order is empty after processing
+
+The extraction was necessary because `@Transactional` only works through the Spring proxy. Calling a `private @Transactional` method via `this.doPlaceOrder()` within the same class bypasses the proxy — the transaction annotation has no effect.
 
 ---
 
@@ -177,7 +184,7 @@ User 1 transaction:                    User 2 transaction:
                                          → 409 returned
 ```
 
-User 2 gets a 409. Their cart is intact. On retry, the transaction reads Book A fresh — stock is now 1, they requested 2. Partial fulfillment now kicks in: `fulfilled = min(2, 1) = 1`, adjustment recorded, order placed with quantity 1.
+User 2 gets a 409. Their cart is intact. `OrderService.placeOrder` automatically retries up to 3 times. On retry, the transaction reads Book A fresh — stock is now 1, they requested 2. Partial fulfillment now kicks in: `fulfilled = min(2, 1) = 1`, adjustment recorded, order placed with quantity 1. Only after 3 consecutive failures does the user see a `400` error.
 
 ### Key distinction
 

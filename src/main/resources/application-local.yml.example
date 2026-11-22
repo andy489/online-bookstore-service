@@ -1,10 +1,9 @@
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/bookstore
-    username: bookstore
-    password: bookstore
-
 app:
   jwt:
     secret: <your-base64-secret>
     expiration-ms: 86400000
+
+  cloudinary:
+    cloud-name: <your-cloud-name>
+    api-key: <your-api-key>
+    api-secret: <your-api-secret>

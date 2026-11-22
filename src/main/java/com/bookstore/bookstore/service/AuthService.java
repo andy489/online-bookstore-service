@@ -58,8 +58,7 @@ public class AuthService {
                 org.springframework.security.core.userdetails.User.withUsername(user.getEmail())
                         .password(user.getPasswordHash())
                         .authorities("ROLE_" + user.getRole().name())
-                        .build(),
-                user.getTokenValidAfter()
+                        .build()
         );
         return new AuthResponse(token, user.getEmail(), user.getRole().name());
     }
@@ -71,10 +70,7 @@ public class AuthService {
         );
 
         UserDetails userDetails = (UserDetails) auth.getPrincipal();
-        java.time.Instant tokenValidAfter = userRepository.findByEmail(userDetails.getUsername())
-                .map(User::getTokenValidAfter)
-                .orElse(java.time.Instant.EPOCH);
-        String token = jwtTokenProvider.generateToken(userDetails, tokenValidAfter);
+        String token = jwtTokenProvider.generateToken(userDetails);
         String role = userDetails.getAuthorities().iterator().next()
                 .getAuthority().replace("ROLE_", "");
         return new AuthResponse(token, userDetails.getUsername(), role);

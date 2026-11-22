@@ -197,13 +197,13 @@ At millions of order items this is seconds of query time. Adding the index now c
 
 ### The Fix
 
-Added `V10__add_order_items_book_id_index.sql`:
+`V10__add_order_items_book_id_index.sql` is planned but **not yet applied** — the current migration history ends at V7. When this migration is added, it will contain:
 
 ```sql
 CREATE INDEX idx_order_items_book_id ON order_items (book_id);
 ```
 
-Flyway applies this on next startup. For a live database with existing data, PostgreSQL builds the index without locking the table (it uses a concurrent build strategy for new indexes).
+Flyway will apply it on next startup. For a live database with existing data, PostgreSQL builds the index without locking the table (it uses a concurrent build strategy for new indexes).
 
 ---
 
@@ -263,5 +263,5 @@ This requires no code changes — Hibernate handles it transparently.
 | 3. Hot book contention | None — already optimal | — |
 | 4. Cache eviction | None — acceptable tradeoff | — |
 | 5. Double query per search | None — mitigated by Redis | — |
-| 6. Missing index on `order_items.book_id` | `V10__add_order_items_book_id_index.sql` | Migration |
+| 6. Missing index on `order_items.book_id` | `V10__add_order_items_book_id_index.sql` (planned, not yet applied) | Migration |
 | 7. JDBC batching | `application.yml` | Config |

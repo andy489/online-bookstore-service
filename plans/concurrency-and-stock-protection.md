@@ -93,13 +93,19 @@ The second thread's version guard fails — 0 rows affected. JPA throws `Optimis
 | Layer | Responsibility |
 |---|---|
 | `@Transactional` | Wraps the entire order operation — if anything fails, all DB changes roll back atomically |
-| `@Version` | Generates the write-time version guard — detects when another transaction won the race |
+| `@Version` | Generates the write-time version guard — detects when another transaction won the race; applied on both `Book` (stock deduction in `placeOrder`) and `Order` (status update in `updateStatus`) |
 | PostgreSQL row locking | Serializes concurrent writes to the same row — the actual physical enforcement |
 
 None of them alone is sufficient:
 - `@Transactional` without `@Version` → no race detection, silent corruption possible
 - `@Version` without `@Transactional` → exception thrown but partial changes already committed
 - PostgreSQL without `@Version` → concurrent UPDATEs both succeed, no way to detect the collision
+
+## Automatic Retry on Collision
+
+Rather than returning a 409 immediately, `OrderService.placeOrder` retries up to 3 times on `ObjectOptimisticLockingFailureException`. On each retry, the transaction re-reads current stock — if the race winner left stock, the loser's retry may succeed (possibly with a partial fulfillment adjustment). Only after 3 consecutive failures does the user receive a `400` error.
+
+The same retry logic applies in `OrderStatusUpdater.update` for order status transitions, since `Order` also carries a `@Version` column.
 
 ---
 

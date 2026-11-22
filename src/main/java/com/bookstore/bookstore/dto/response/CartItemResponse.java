@@ -9,6 +9,7 @@ public class CartItemResponse {
     private Long bookId;
     private String title;
     private String author;
+    private String coverImageUrl;
     private BigDecimal price;
     private Integer quantity;
     private BigDecimal subtotal;
@@ -20,6 +21,7 @@ public class CartItemResponse {
         r.bookId = item.getBook().getId();
         r.title = item.getBook().getTitle();
         r.author = item.getBook().getAuthor();
+        r.coverImageUrl = item.getBook().getCoverImageUrl();
         r.price = item.getBook().getPrice();
         r.quantity = item.getQuantity();
         r.subtotal = item.getBook().getPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
@@ -29,6 +31,7 @@ public class CartItemResponse {
     public Long getBookId() { return bookId; }
     public String getTitle() { return title; }
     public String getAuthor() { return author; }
+    public String getCoverImageUrl() { return coverImageUrl; }
     public BigDecimal getPrice() { return price; }
     public Integer getQuantity() { return quantity; }
     public BigDecimal getSubtotal() { return subtotal; }

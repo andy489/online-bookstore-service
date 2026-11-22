@@ -7,12 +7,14 @@ import com.bookstore.bookstore.exception.InvalidOperationException;
 import com.bookstore.bookstore.exception.ResourceNotFoundException;
 import com.bookstore.bookstore.repository.BookRepository;
 import com.bookstore.bookstore.repository.OrderRepository;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -34,10 +36,13 @@ public class OrderStatusUpdater {
 
     private final OrderRepository orderRepository;
     private final BookRepository bookRepository;
+    private final CacheManager cacheManager;
 
-    public OrderStatusUpdater(OrderRepository orderRepository, BookRepository bookRepository) {
+    public OrderStatusUpdater(OrderRepository orderRepository, BookRepository bookRepository,
+                              CacheManager cacheManager) {
         this.orderRepository = orderRepository;
         this.bookRepository = bookRepository;
+        this.cacheManager = cacheManager;
     }
 
     @Transactional
@@ -52,16 +57,27 @@ public class OrderStatusUpdater {
                     "Cannot transition order from " + current + " to " + next);
         }
 
+        boolean stockChanged = false;
         if (next == OrderStatus.CANCELLED) {
             for (OrderItem item : order.getItems()) {
                 Book book = item.getBook();
-                book.setStock(book.getStock() + item.getQuantity());
-                bookRepository.save(book);
+                // Bug #8 fix: don't restore stock to soft-deleted books
+                if (!book.isDeleted()) {
+                    book.setStock(book.getStock() + item.getQuantity());
+                    bookRepository.save(book);
+                    stockChanged = true;
+                }
             }
         }
 
         order.setStatus(next);
         orderRepository.save(order);
+
+        if (stockChanged) {
+            // Stock changed — evict the books cache so inStock reflects reality
+            Objects.requireNonNull(cacheManager.getCache("books")).clear();
+        }
+
         return OrderResponse.from(order);
     }
 }

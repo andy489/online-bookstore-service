@@ -25,6 +25,10 @@ configurations.all {
             useVersion("3.18.0")
             because("CVE-2025-48924: commons-lang3 < 3.18.0 vulnerable to StackOverflowError via ClassUtils.getClass")
         }
+        if (requested.group == "org.testcontainers") {
+            useVersion("1.21.4")
+            because("Spring Boot 3.4.1 pins Testcontainers 1.20.4, whose docker-java is rejected (HTTP 400) by Docker Engine 29")
+        }
     }
 }
 
@@ -40,9 +44,9 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
 
     // Database
-    runtimeOnly("org.postgresql:postgresql")
+    runtimeOnly("com.mysql:mysql-connector-j")
     implementation("org.flywaydb:flyway-core")
-    runtimeOnly("org.flywaydb:flyway-database-postgresql")
+    implementation("org.flywaydb:flyway-mysql")
 
     // OpenAPI / Swagger UI
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6")
@@ -65,7 +69,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.testcontainers:junit-jupiter")
-    testImplementation("org.testcontainers:postgresql")
+    testImplementation("org.testcontainers:mysql")
     testImplementation("com.redis:testcontainers-redis:2.2.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -73,4 +77,8 @@ dependencies {
 tasks.withType<Test> {
     useJUnitPlatform()
     jvmArgs("-Dnet.bytebuddy.experimental=true")
+}
+
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    args("--spring.profiles.active=dev,local")
 }
