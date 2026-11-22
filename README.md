@@ -67,7 +67,7 @@ The project is built in phases, each independently committable:
 | 7 | Orders — place from cart (stock deduction), history, status management |
 | 8 | Polish — global error handling, input validation, security hardening |
 
-Full task breakdown: [`plans/2026-11-19-bookstore-backend.md`](plans/2026-11-19-bookstore-backend.md)
+Full task breakdown: [`plans/bookstore-backend-implementation.md`](plans/bookstore-backend-implementation.md)
 
 ### Key Design Decisions
 
@@ -76,15 +76,16 @@ Full task breakdown: [`plans/2026-11-19-bookstore-backend.md`](plans/2026-11-19-
 - **Layered architecture** — `controller → service → repository → domain`
 - **Stateless JWT** — no server-side sessions
 - **Stock deduction** is transactional with optimistic locking (`@Version` on `Book`) to handle concurrent orders
-- **Docker** — app + PostgreSQL containerized via Docker Compose for zero-setup local development
+- **Docker** — app + MySQL + Redis containerized via Docker Compose for zero-setup local development
 
 ## Tech Stack
 
 - Java 21
 - Spring Boot 3
 - Spring Security + JWT
-- Spring Data JPA
-- PostgreSQL
+- Spring Data JPA + Flyway
+- MySQL 8 (schema) + Redis 7 (cache / token blocklist)
+- React + TypeScript + Vite (frontend)
 - Gradle (Kotlin DSL)
 - Docker + Docker Compose
 
@@ -124,7 +125,7 @@ docker compose up --build
 
 ### Run locally (no Docker)
 
-**Prerequisites:** Java 21+, Gradle 9+, PostgreSQL running locally
+**Prerequisites:** Java 21+, Gradle 9+, MySQL 8 running locally
 
 ```bash
 cp .env.example .env        # fill in DB credentials and JWT_SECRET
@@ -141,3 +142,18 @@ cp .env.example .env        # fill in DB credentials and JWT_SECRET
 | Categories | `/api/categories` |
 | Cart       | `/api/cart`       |
 | Orders     | `/api/orders`     |
+
+## Database Schema
+
+The schema is defined in a single Flyway baseline migration:
+[`src/main/resources/db/migration/V1__baseline_schema.sql`](src/main/resources/db/migration/V1__baseline_schema.sql).
+Dev-only seed data lives under
+[`src/main/resources/db/seed/`](src/main/resources/db/seed) and is applied only
+with the `dev` profile.
+
+Entity–relationship diagram:
+
+![Bookstore ER diagram](plans/diagrams/bookstore-erd.png)
+
+Higher-resolution and print versions, plus regeneration steps, are in
+[`plans/diagrams/`](plans/diagrams/).
