@@ -2,7 +2,7 @@
 
 > **Goal**: Demonstrate project structure and coding style for a production-grade Spring Boot REST API.
 > **Constraints**: No Lombok · No `CrudRepository` · Custom repositories (EntityManager / JPQL) · JWT stateless auth
-> **Status**: Backend complete. Frontend (Phase 10) is the only remaining work.
+> **Status**: Complete — backend and React frontend (Phase 10) both done.
 
 ---
 
@@ -347,53 +347,54 @@ Both the read and the write happen inside a single `@Transactional` method. If `
 
 ---
 
-## 🔲 Phase 10 — Frontend (React + TypeScript)
+## ✅ Phase 10 — Frontend (React + TypeScript)
 
-**Not started.** This is the only remaining phase.
+**Done.** React 19 + TypeScript SPA under `frontend/` (Vite). See
+[`frontend-ui-guide.md`](frontend-ui-guide.md) and
+[`screenshots/`](screenshots/).
 
 ### Setup
 
-- [ ] Scaffold with Vite: `npm create vite@latest bookstore-ui -- --template react-ts`
-- [ ] Place under `frontend/` in repo root
-- [ ] Add `axios`, `react-router-dom`, `zustand`
-- [ ] Configure Vite proxy: `/api` → `http://localhost:8080` (avoids CORS in dev)
+- [x] Scaffolded with Vite (React + TypeScript), under `frontend/` in repo root
+- [x] `axios`, `react-router-dom`, `zustand` added
+- [x] Vite proxy `/api` → `http://localhost:8080` (avoids CORS in dev)
 
 ### Auth
 
-- [ ] Register form (`POST /api/auth/register`)
-- [ ] Login form (`POST /api/auth/login`)
-- [ ] Store JWT in `localStorage`; attach as `Authorization: Bearer` via Axios interceptor
-- [ ] Protected route wrapper — redirect to `/login` if no token
+- [x] Register form (`POST /api/auth/register`)
+- [x] Login form (`POST /api/auth/login`)
+- [x] JWT persisted (Zustand + `localStorage`); attached as `Authorization: Bearer` via Axios interceptor
+- [x] Protected route wrapper (`RequireAuth`) — redirect to `/login` if no token
 
 ### Books & Browse
 
-- [ ] Book list page — search bar, category filter, price range, sort controls
-- [ ] Paginated results grid — book card with Cloudinary cover (`<img src={book.coverImageUrl} />`), title, author, price, "Add to Cart"
-- [ ] Book detail page — full description, stock indicator, quantity selector
+- [x] Book list page — search bar, category filter, price range, sort controls
+- [x] Paginated results grid — book card with Cloudinary cover, title, author, price, "Add to Cart"
+- [x] Book detail page — full description, stock indicator, quantity selector
 
 ### Cart
 
-- [ ] Cart page — list items, quantity controls, remove, total
-- [ ] "Add to Cart" → `POST /api/cart/items`; cart icon shows item count in nav
+- [x] Cart page — list items, quantity controls, remove, total
+- [x] "Add to Cart" → `POST /api/cart/items`; cart icon shows item count in nav
 
 ### Checkout & Orders
 
-- [ ] Checkout button → `POST /api/orders` → order confirmation page
-- [ ] Order history page — `GET /api/orders/my` with status badge
-- [ ] Order detail page — items, prices, status
+- [x] Checkout button → `POST /api/orders` → order confirmation page
+- [x] Order history page — `GET /api/orders/my` with status badge
+- [x] Order detail page — items, prices, status
 
 ### Admin Panel
 
-- [ ] Admin-only route guard (`role === 'ADMIN'`)
-- [ ] Category management — list, create, edit, delete
-- [ ] Book management — list, create, edit, soft-delete; cover upload via `POST /api/books/{id}/cover`
-- [ ] Order management — list all orders, status update dropdown
+- [x] Admin-only route guard (`role === 'ADMIN'`)
+- [x] Category management — list, create, edit, delete
+- [x] Book management — list, create, edit, soft-delete; cover upload via `POST /api/books/{id}/cover`
+- [x] Order management — list all orders, status update dropdown
 
 ### Polish
 
-- [ ] Loading states and error messages on all forms
-- [ ] 404 and empty-state pages
-- [ ] Responsive layout (mobile-friendly)
+- [x] Loading states and error messages on all forms
+- [x] 404 and empty-state pages
+- [x] Responsive layout (mobile-friendly)
 
 ---
 

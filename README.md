@@ -44,7 +44,7 @@ More in [`plans/screenshots/`](plans/screenshots/).
 | Image hosting | Cloudinary CDN |
 | API docs | springdoc-openapi 2.8.6 (Swagger UI) |
 | Frontend | React 19 + TypeScript, Vite, react-router v7, Zustand, Axios |
-| Containers | Docker + Docker Compose (MySQL, Redis, backend, nginx frontend) |
+| Containers | Docker Compose (MySQL + Redis infra); Dockerfiles for backend + nginx frontend |
 
 **Design rules (enforced throughout):** no Lombok · no `CrudRepository`
 auto-queries (custom repositories only) · controllers → services → repositories →
@@ -162,19 +162,26 @@ npm install
 npm run dev          # http://localhost:5173, proxies /api → :8080
 ```
 
-### 3. Full stack in Docker
+### 3. Container images (optional)
 
-Builds and runs everything (MySQL, Redis, backend, nginx-served frontend):
+`docker-compose.yml` runs **only the MySQL + Redis infrastructure** (see steps 1–2).
+The backend and frontend each have a Dockerfile that can be built and run
+directly, but they are **not** wired into Compose yet:
 
 ```bash
-docker compose up --build
+docker build -t bookstore-backend .            # Spring Boot fat jar → :8080
+docker build -t bookstore-frontend ./frontend  # React build served by nginx → :80
 ```
+
+`frontend/nginx.conf` serves the SPA and proxies `/api/` to an `app:8080`
+upstream, so a full containerised stack would add `app` + `frontend` services to
+`docker-compose.yml` building these images.
 
 | Service | URL |
 |---|---|
-| Frontend (nginx) | http://localhost |
 | Backend | http://localhost:8080 |
 | Swagger UI | http://localhost:8080/swagger-ui.html |
+| Frontend (Vite dev) | http://localhost:5173 |
 
 ### Seeded accounts (dev profile only, password `12345678`)
 

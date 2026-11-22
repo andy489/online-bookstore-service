@@ -13,12 +13,12 @@ A complete walkthrough covering every implemented feature in order. Follow the s
 ```bash
 open -a Docker                        # launch Docker Desktop (macOS) if not already running
 docker compose down -v                # wipe volumes so Flyway starts clean
-docker compose up --build             # starts Postgres, Redis, and the app
+docker compose up --build             # starts MySQL, Redis, and the app
 ```
 
 `open -a Docker` is macOS shorthand for launching Docker Desktop — equivalent to clicking it in Finder. It starts the Docker daemon, which listens on a Unix socket (`/var/run/docker.sock`). Both `docker compose` and Testcontainers (used by the automated test suite) need this socket to be reachable before they can start containers.
 
-`docker compose down -v` removes the Postgres and Redis volumes. Skipping this on a re-run causes Flyway to fail with "non-empty schema but no history table" because the DB already has tables from a previous run.
+`docker compose down -v` removes the MySQL and Redis volumes. Skipping this on a re-run causes Flyway to fail with "non-empty schema but no history table" because the DB already has tables from a previous run.
 
 Wait until you see `Started BookstoreApplication` in the logs.
 
@@ -59,7 +59,7 @@ done
 
 Expected: attempts 1–5 return `401` (wrong credentials but request reached the handler). Attempt **6** returns `429`:
 ```json
-{"message": "Too many requests. Please try again later."}
+{"status": 429, "message": "Too many requests — try again in 60 seconds"}
 ```
 with a `Retry-After: 60` response header.
 
@@ -423,7 +423,7 @@ curl -s http://localhost:8080/api/users/me \
   -H "Authorization: Bearer $USER_TOKEN" | jq
 ```
 
-Expected `403` — the token is cryptographically valid but its `jti` is on the Redis blocklist.
+Expected `401` — the token is cryptographically valid but its `jti` is on the Redis blocklist, so the request is treated as unauthenticated.
 
 ### Log back in with a fresh token
 
@@ -439,12 +439,12 @@ The new token has a new `jti` and is not blocked.
 
 ## 13. Admin Flow — Login as Rumen
 
-Rumen is a seeded ADMIN (password `1234`).
+Rumen is a seeded ADMIN (password `12345678`).
 
 ```bash
 export ADMIN_TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"rumen@bookstore.local","password":"1234"}' | jq -r '.token')
+  -d '{"email":"rumen@bookstore.local","password":"12345678"}' | jq -r '.token')
 echo $ADMIN_TOKEN
 ```
 
@@ -643,29 +643,31 @@ Expected `404`. Soft-deleted books are excluded from all queries. The book recor
 
 ## 21. Access Denied Checks
 
-All of these should return `403`:
+Two kinds of denial: **`401`** when there is no valid authentication (missing,
+invalid, or blocklisted token), and **`403`** when a valid USER is authenticated
+but lacks the ADMIN role.
 
 ```bash
-# No token on a protected endpoint
+# No token on a protected endpoint → 401 (unauthenticated)
 curl -s http://localhost:8080/api/users/me | jq
 
-# USER trying to create a book
+# USER trying to create a book → 403 (authenticated, not admin)
 curl -s -X POST http://localhost:8080/api/books \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title":"Hack","author":"Me","description":"x","price":1.00,"stock":1,"categoryId":1}' | jq
 
-# USER trying to delete a category
+# USER trying to delete a category → 403
 curl -s -X DELETE http://localhost:8080/api/categories/1 \
   -H "Authorization: Bearer $USER_TOKEN" | jq
 
-# USER trying to update an order status
+# USER trying to update an order status → 403
 curl -s -X PATCH http://localhost:8080/api/orders/1/status \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"status":"SHIPPED"}' | jq
 
-# USER trying to access admin order list
+# USER trying to access admin order list → 403
 curl -s http://localhost:8080/api/orders \
   -H "Authorization: Bearer $USER_TOKEN" | jq
 ```
@@ -712,26 +714,24 @@ curl -s -X POST http://localhost:8080/api/books \
 
 ## Reference — Seeded Data
 
-### Users (all password `1234`)
+### Users (all password `12345678`)
 
 | Email | Role |
 |---|---|
-| `pesho@gmail.com` | USER |
+| `pesho@bookstore.local` | USER |
 | `anya@bookstore.local` | USER |
 | `rumen@bookstore.local` | ADMIN |
 
 ### Books
 
-23 books across 6 categories — Classic Literature, War & Historical Fiction, Crime & Mystery, Philosophy & Drama, Epic & Adventure, Science & Non-Fiction. All have Cloudinary CDN cover URLs seeded inline in `V3__seed_catalog.sql`.
+23 books across 6 categories — Classic Literature, War & Historical Fiction, Crime & Mystery, Philosophy & Drama, Epic & Adventure, Science & Non-Fiction. All have Cloudinary CDN cover URLs seeded inline in `db/seed/V1002__seed_catalog.sql`.
 
 ### Migrations
 
+Schema and seed data are split across two Flyway locations (schema always runs; seed is dev-profile only):
+
 | File | Contents |
 |---|---|
-| `V1__init.sql` | Full DDL — all tables + indexes |
-| `V2__seed_users.sql` | All 3 seed users |
-| `V3__seed_catalog.sql` | 6 categories + 23 books with cover URLs |
-| `V4__add_indexes.sql` | `order_items.book_id` index |
-| `V5__add_constraints.sql` | CHECK constraints on stock and quantity columns |
-| `V6__add_version_and_check_constraints.sql` | `version` column on orders (optimistic locking), enum CHECK constraints |
-| `V7__add_token_valid_after.sql` | `token_valid_after` column on users |
+| `db/migration/V1__baseline_schema.sql` | Full DDL — all 7 tables, indexes, CHECK constraints, `version` columns (optimistic locking), and `token_valid_after` on users |
+| `db/seed/V1001__seed_users.sql` | 3 seed users (dev only) |
+| `db/seed/V1002__seed_catalog.sql` | 6 categories + 23 books with cover URLs (dev only) |
