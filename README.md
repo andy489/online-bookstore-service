@@ -1,159 +1,253 @@
 # Online Bookstore Service
 
-A RESTful backend for an online bookstore where users can browse, search, and purchase books. Admins manage inventory, categories, and orders.
+A full-stack online bookstore where users browse, search, and purchase books, and
+admins manage inventory, categories, and orders. A Spring Boot REST backend
+(MySQL + Redis) with a React + TypeScript single-page frontend.
 
-## Task Description
+- **Backend:** stateless JWT auth, role-based access, partial-fulfillment order
+  engine with optimistic locking, Redis-cached catalog, Flyway-managed schema,
+  Cloudinary cover hosting, and interactive OpenAPI docs.
+- **Frontend:** React 19 SPA (Vite) with browse/search, cart, checkout, order
+  history, profile, and an admin panel.
 
-Build a RESTful backend for an online bookstore, where users can browse, search, and purchase books. Admins manage inventory, categories, and orders.
+> Database ER diagram: [`plans/diagrams/bookstore-erd.png`](plans/diagrams/bookstore-erd.png)
+> · UI screenshots: [`plans/screenshots/`](plans/screenshots/)
+> · interactive API docs at `/swagger-ui.html` when the app is running.
 
-### Core Features
+---
 
-#### 1. User Management
+## Screenshots
 
-- **Register / Login**
-  - Roles: `ADMIN`, `USER`
-- **Profile Management**
-  - View/edit profile
-  - Change password
+| Browse | Book detail | Cart |
+|---|---|---|
+| ![Browse](plans/screenshots/01-books-browse.png) | ![Book detail](plans/screenshots/02-book-detail.png) | ![Cart](plans/screenshots/03-shopping-cart.png) |
 
-#### 2. Book Management
+| Order detail | Admin — Books | Admin — Orders |
+|---|---|---|
+| ![Order detail](plans/screenshots/04-order-detail.png) | ![Admin books](plans/screenshots/05-admin-books.png) | ![Admin orders](plans/screenshots/06-admin-orders.png) |
 
-- **CRUD Operations (Admin only)**
-  - Book fields: `title`, `author`, `description`, `price`, `stock`, `category`, `coverImageUrl`
-- **View Books (User)**
-  - List, filter, pagination
-  - Search by title, author, category
+More in [`plans/screenshots/`](plans/screenshots/).
 
-#### 3. Category Management
-
-- Admin can create/update/delete categories
-- Users can filter books by category
-
-#### 4. Shopping Cart
-
-- Each user has a cart
-- Add/remove books to/from cart
-- Update quantity
-
-#### 5. Order Management
-
-- **Place Order**
-  - Requires items in cart
-  - Deduct stock from books
-- **Order History**
-  - Admin can view all orders
-- Order statuses: `PENDING` → `SHIPPED` → `DELIVERED` / `CANCELLED`
-
-### Notes
-
-- The requirements are intentionally open-ended — feel free to interpret them
-- Not all features need to be implemented; the goal is to show project structure and coding style
-- No Lombok — plain Java code preferred
-- No `CrudRepository` auto-generated queries — custom repository implementations preferred
-
-## Implementation Plan
-
-The project is built in phases, each independently committable:
-
-| Phase | Scope |
-|-------|-------|
-| 0 | Project bootstrap — Spring Boot 3, dependencies, DB config, Docker setup |
-| 1 | Domain entities — User, Book, Category, Cart, CartItem, Order, OrderItem |
-| 2 | Security & Auth — JWT filter, register/login endpoints |
-| 3 | User profile — view, edit, change password |
-| 4 | Category management — admin CRUD, public list |
-| 5 | Book management — admin CRUD, public search/filter/paginate |
-| 6 | Shopping cart — add/remove/update items |
-| 7 | Orders — place from cart (stock deduction), history, status management |
-| 8 | Polish — global error handling, input validation, security hardening |
-
-Full task breakdown: [`plans/bookstore-backend-implementation.md`](plans/bookstore-backend-implementation.md)
-
-### Key Design Decisions
-
-- **No Lombok** — plain Java getters/setters/constructors
-- **No `CrudRepository`** — custom repositories using `EntityManager` (JPQL) or `Repository<T,ID>` with `@Query`
-- **Layered architecture** — `controller → service → repository → domain`
-- **Stateless JWT** — no server-side sessions
-- **Stock deduction** is transactional with optimistic locking (`@Version` on `Book`) to handle concurrent orders
-- **Docker** — app + MySQL + Redis containerized via Docker Compose for zero-setup local development
+---
 
 ## Tech Stack
 
-- Java 21
-- Spring Boot 3
-- Spring Security + JWT
-- Spring Data JPA + Flyway
-- MySQL 8 (schema) + Redis 7 (cache / token blocklist)
-- React + TypeScript + Vite (frontend)
-- Gradle (Kotlin DSL)
-- Docker + Docker Compose
+| Layer | Technology |
+|---|---|
+| Language | Java 21 |
+| Framework | Spring Boot 3.4.1 (Gradle Kotlin DSL) |
+| Security | Spring Security 6, JWT (jjwt 0.12.6), BCrypt (`DelegatingPasswordEncoder`) |
+| Persistence | Spring Data JPA (Hibernate), custom repositories (`EntityManager` / Criteria API) |
+| Database | MySQL 8, schema versioned with Flyway |
+| Caching | Redis 7, Spring Cache (JSON serialization, 5-min TTL) |
+| Rate limiting | Bucket4j 8.10 (Redis-backed) |
+| Image hosting | Cloudinary CDN |
+| API docs | springdoc-openapi 2.8.6 (Swagger UI) |
+| Frontend | React 19 + TypeScript, Vite, react-router v7, Zustand, Axios |
+| Containers | Docker + Docker Compose (MySQL, Redis, backend, nginx frontend) |
+
+**Design rules (enforced throughout):** no Lombok · no `CrudRepository`
+auto-queries (custom repositories only) · controllers → services → repositories →
+domain · services return DTOs, never entities · `@Transactional` only on service
+methods · `BigDecimal` for money · `Instant` for timestamps.
+
+---
+
+## Features
+
+### Users & Auth
+- Register / login issue a stateless JWT (24h default); logout blocklists the token server-side (Redis).
+- Roles: `USER` and `ADMIN`, enforced with method-level `@PreAuthorize`.
+- Profile: view/update name, change password. Changing the password invalidates
+  all prior tokens (a DB-side `token_valid_after` cutoff) and blocklists the
+  current one — the user must log in again.
+
+### Catalog
+- Books: dynamic search/filter by `query`, `categoryId`, `minPrice`, `maxPrice`
+  with pagination and sorting (Criteria API). Soft-delete preserves order history.
+- Admin CRUD on books and categories; per-book cover upload to Cloudinary.
+- Catalog reads are Redis-cached and evicted on any stock/catalog mutation.
+
+### Cart
+- One cart per user; add/update/remove/clear items.
+- Guards: out-of-stock rejection, 100-distinct-item cap, quantity ≤ available stock.
+- Loaded with `JOIN FETCH` to avoid N+1 queries.
+
+### Orders — partial fulfillment
+Placing an order makes a single pass over the cart:
+
+| Cart line | Result |
+|---|---|
+| in stock (stock ≥ requested) | fulfilled fully |
+| partial (0 < stock < requested) | capped to available; adjustment recorded |
+| out of stock (stock = 0) | skipped; adjustment recorded |
+
+If nothing can be fulfilled, no order is created (`400`). Otherwise the order is
+saved `PENDING`, the cart is cleared, and the response lists any `adjustments`.
+`priceAtPurchase` is snapshotted per item so later price changes don't affect
+past orders.
+
+**Status state machine** (admin-driven): `PENDING → {SHIPPED, CANCELLED}`,
+`SHIPPED → {DELIVERED, CANCELLED}`, `DELIVERED`/`CANCELLED` are terminal.
+Cancelling restores stock for still-active (non-soft-deleted) books.
+
+Concurrency is handled at the database via JPA `@Version` optimistic locking on
+`Book` and `Order`; conflicting order placements/updates retry up to 3 times.
+
+---
+
+## API Overview
+
+Base URL `http://localhost:8080`. Full interactive reference at
+**`/swagger-ui.html`**.
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| POST | `/api/auth/register` | public | Create account, returns JWT |
+| POST | `/api/auth/login` | public | Authenticate, returns JWT |
+| POST | `/api/auth/logout` | auth | Blocklist the current token |
+| GET | `/api/users/me` | auth | Current user profile |
+| PUT | `/api/users/me` | auth | Update first/last name |
+| PATCH | `/api/users/me/password` | auth | Change password (invalidates tokens) |
+| GET | `/api/categories`, `/api/categories/{id}` | public | List / get category |
+| POST / PUT / DELETE | `/api/categories`, `/api/categories/{id}` | ADMIN | Manage categories |
+| GET | `/api/books` | auth | Search/filter/paginate books |
+| GET | `/api/books/{id}` | auth | Book detail |
+| POST / PUT / DELETE | `/api/books`, `/api/books/{id}` | ADMIN | Manage books (DELETE = soft) |
+| POST | `/api/books/{id}/cover` | ADMIN | Upload cover (multipart) → Cloudinary |
+| GET | `/api/cart` | auth | View cart |
+| POST | `/api/cart/items` | auth | Add item |
+| PUT | `/api/cart/items/{bookId}` | auth | Update quantity |
+| DELETE | `/api/cart/items/{bookId}` | auth | Remove item |
+| DELETE | `/api/cart` | auth | Clear cart |
+| POST | `/api/orders` | auth | Place order from cart |
+| GET | `/api/orders/my` | auth | Own order history |
+| GET | `/api/orders/{id}` | auth | Order detail (own, or any for ADMIN) |
+| GET | `/api/orders` | ADMIN | All orders, paginated |
+| PATCH | `/api/orders/{id}/status` | ADMIN | Transition order status |
+
+---
 
 ## Getting Started
 
 ### Prerequisites
+- Docker + Docker Compose (MySQL + Redis run in containers).
+- For running the backend locally: Java 21+. For the frontend dev server: Node 22+.
 
-- Docker + Docker Compose
-
-### Local development setup (recommended)
-
-The most common dev workflow — PostgreSQL runs in Docker, the app runs locally for fast feedback and easy debugging:
-
-```bash
-git clone https://github.com/andy489/online-bookstore-service.git
-cd online-bookstore-service
-
-# Create local config file with your credentials
-cp src/main/resources/application-local.yml.example \
-   src/main/resources/application-local.yml
-# Edit application-local.yml and fill in your JWT secret
-
-docker compose up db        # start only the database
-./gradlew bootRun --args='--spring.profiles.active=local'   # separate terminal
-```
-
-The API will be available at `http://localhost:8080`.
-
-### Run everything in Docker
-
-Runs both the app and the database in containers — no local JDK needed:
+### 1. Configure environment
 
 ```bash
 cp .env.example .env
+# Fill in DB_USERNAME / DB_PASSWORD, JWT_SECRET, and Cloudinary credentials.
+# .env is gitignored — never commit real secrets.
+```
+
+### 2. Local development (recommended)
+
+Infra in Docker, backend on the host for fast feedback:
+
+```bash
+docker compose up -d db redis                 # start MySQL + Redis
+./gradlew bootRun --args='--spring.profiles.active=dev,local'
+```
+
+The `dev` profile also loads seed data (users + catalog). The API is at
+`http://localhost:8080`.
+
+Frontend dev server (separate terminal):
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173, proxies /api → :8080
+```
+
+### 3. Full stack in Docker
+
+Builds and runs everything (MySQL, Redis, backend, nginx-served frontend):
+
+```bash
 docker compose up --build
 ```
 
-### Run locally (no Docker)
+| Service | URL |
+|---|---|
+| Frontend (nginx) | http://localhost |
+| Backend | http://localhost:8080 |
+| Swagger UI | http://localhost:8080/swagger-ui.html |
 
-**Prerequisites:** Java 21+, Gradle 9+, MySQL 8 running locally
+### Seeded accounts (dev profile only, password `12345678`)
 
-```bash
-cp .env.example .env        # fill in DB credentials and JWT_SECRET
-./gradlew bootRun
+| Email | Role |
+|---|---|
+| `pesho@bookstore.local` | USER |
+| `anya@bookstore.local` | USER |
+| `rumen@bookstore.local` | ADMIN |
+
+---
+
+## Database
+
+Schema is managed by Flyway and never auto-generated (`ddl-auto` is off).
+
+```
+src/main/resources/db/
+├── migration/
+│   └── V1__baseline_schema.sql     # all tables, indexes, constraints (prod + tests)
+└── seed/                           # dev-only, loaded via the `dev` profile
+    ├── V1001__seed_users.sql       # 3 demo users
+    └── V1002__seed_catalog.sql     # 6 categories + 23 books (Cloudinary covers)
 ```
 
-## API Overview
+`application.yml` points Flyway at `classpath:db/migration` only (schema, prod-safe);
+`application-dev.yml` adds `classpath:db/seed` so seeds apply only in dev. The seed
+version band (`V1001+`) is kept clear of the schema band so they never collide.
 
-| Resource   | Endpoint prefix   |
-|------------|-------------------|
-| Auth       | `/api/auth`       |
-| Users      | `/api/users`      |
-| Books      | `/api/books`      |
-| Categories | `/api/categories` |
-| Cart       | `/api/cart`       |
-| Orders     | `/api/orders`     |
-
-## Database Schema
-
-The schema is defined in a single Flyway baseline migration:
-[`src/main/resources/db/migration/V1__baseline_schema.sql`](src/main/resources/db/migration/V1__baseline_schema.sql).
-Dev-only seed data lives under
-[`src/main/resources/db/seed/`](src/main/resources/db/seed) and is applied only
-with the `dev` profile.
-
-Entity–relationship diagram:
-
-![Bookstore ER diagram](plans/diagrams/bookstore-erd.png)
-
-Higher-resolution and print versions, plus regeneration steps, are in
+**Entities:** `User`, `Category`, `Book`, `Cart`, `CartItem`, `Order`, `OrderItem`.
+See the ER diagram and regeneration notes in
 [`plans/diagrams/`](plans/diagrams/).
+
+---
+
+## Testing
+
+```bash
+./gradlew test
+```
+
+- **MVC slice tests** (`@WebMvcTest`) for controller/security behavior.
+- **Integration tests** spin up real MySQL and Redis via Testcontainers and run
+  against the `db/migration` schema (no seed data), so the baseline migration must
+  stand alone.
+
+> Testcontainers is pinned to 1.21.4 for compatibility with Docker Engine 29.
+
+---
+
+## Project Layout
+
+```
+.
+├── src/main/java/com/bookstore/bookstore/
+│   ├── config/        # SecurityConfig, CacheConfig, OpenApiConfig, CloudinaryConfig, RateLimitConfig
+│   ├── security/      # JwtTokenProvider, JwtAuthenticationFilter, RateLimitFilter, UserDetailsServiceImpl
+│   ├── domain/        # JPA entities + enums (Role, OrderStatus)
+│   ├── repository/    # interfaces + EntityManager/Criteria implementations
+│   ├── service/       # BookService, CartService, OrderService, OrderPlacer, OrderStatusUpdater, ...
+│   ├── controller/    # REST controllers
+│   ├── dto/           # request/ and response/ DTOs (+ PageResponse<T>, ErrorResponse)
+│   └── exception/     # domain exceptions + GlobalExceptionHandler
+├── src/main/resources/
+│   ├── db/            # Flyway migration/ + seed/
+│   └── application*.yml
+├── frontend/          # React + TypeScript + Vite SPA (see frontend/README.md)
+├── plans/             # design notes, guides, and the ER diagram
+├── docker-compose.yml
+└── build.gradle.kts
+```
+
+Deeper design notes live in [`plans/`](plans/) — e.g.
+[implementation plan](plans/bookstore-backend-implementation.md),
+[concurrency & stock protection](plans/concurrency-and-stock-protection.md),
+[partial order fulfillment](plans/order-fulfillment-v2-partial-with-adjustments.md),
+and the [frontend UI guide](plans/frontend-ui-guide.md).
